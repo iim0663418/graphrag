@@ -6,13 +6,11 @@ instances that are compatible with GraphRAG's configuration system.
 """
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
-from graphrag.llm.base import CachingLLM, RateLimitingLLM
+from graphrag.llm.base import BaseLLM, CachingLLM, RateLimitingLLM
 from graphrag.llm.limiting import LLMLimiter
 from graphrag.llm.types import (
-    LLM,
     CompletionInput,
     CompletionOutput,
     EmbeddingInput,
@@ -32,30 +30,22 @@ from .adapters.lmstudio_embeddings_llm import (
 log = logging.getLogger(__name__)
 
 
-@dataclass
-class _RateLimitConfig:
-    """Internal config for rate limiting to satisfy LLMConfig protocol."""
-
-    max_retries: int | None = 3
-    max_retry_wait: float | None = 10.0
-    sleep_on_rate_limit_recommendation: bool | None = True
-    tokens_per_minute: int | None = 0
-    requests_per_minute: int | None = 0
-
-
 def create_lmstudio_chat_llm(
     config: dict[str, Any],
     cache: LLMCache | None = None,
     limiter: LLMLimiter | None = None,
-) -> LLM[CompletionInput, CompletionOutput]:
+) -> BaseLLM[CompletionInput, CompletionOutput]:
     """Create a LMStudio-based chat LLM with optional caching and rate limiting."""
+    from graphrag.llm.types import LLMConfig
+    
     llm_config = LMStudioConfiguration(config)
-    result: LLM[CompletionInput, CompletionOutput] = LMStudioChatLLM(llm_config)
-
+    result: BaseLLM[CompletionInput, CompletionOutput] = LMStudioChatLLM(llm_config)
+    
     # Apply rate limiting if provided
     if limiter is not None:
         log.info("Applying rate limiting to LMStudio chat LLM")
-        rate_config = _RateLimitConfig(
+        # Create proper LLMConfig for rate limiting
+        rate_config = LLMConfig(
             max_retries=3,
             max_retry_wait=10.0,
             sleep_on_rate_limit_recommendation=True,
@@ -66,9 +56,8 @@ def create_lmstudio_chat_llm(
             operation="chat_completion",
             retryable_errors=[],
             rate_limit_errors=[],
-            rate_limiter=limiter,
         )
-
+    
     # Apply caching if provided
     if cache is not None:
         log.info("Applying caching to LMStudio chat LLM")
@@ -78,7 +67,7 @@ def create_lmstudio_chat_llm(
             operation="chat_completion",
             cache=cache,
         )
-
+    
     return result
 
 
@@ -86,15 +75,18 @@ def create_lmstudio_embedding_llm(
     config: dict[str, Any],
     cache: LLMCache | None = None,
     limiter: LLMLimiter | None = None,
-) -> LLM[EmbeddingInput, EmbeddingOutput]:
+) -> BaseLLM[EmbeddingInput, EmbeddingOutput]:
     """Create a LMStudio-based embedding LLM with optional caching and rate limiting."""
+    from graphrag.llm.types import LLMConfig
+    
     embed_config = LMStudioEmbeddingConfiguration(config)
-    result: LLM[EmbeddingInput, EmbeddingOutput] = LMStudioEmbeddingsLLM(embed_config)
-
+    result: BaseLLM[EmbeddingInput, EmbeddingOutput] = LMStudioEmbeddingsLLM(embed_config)
+    
     # Apply rate limiting if provided
     if limiter is not None:
         log.info("Applying rate limiting to LMStudio embedding LLM")
-        rate_config = _RateLimitConfig(
+        # Create proper LLMConfig for rate limiting
+        rate_config = LLMConfig(
             max_retries=3,
             max_retry_wait=10.0,
             sleep_on_rate_limit_recommendation=True,
@@ -105,9 +97,8 @@ def create_lmstudio_embedding_llm(
             operation="embedding",
             retryable_errors=[],
             rate_limit_errors=[],
-            rate_limiter=limiter,
         )
-
+    
     # Apply caching if provided
     if cache is not None:
         log.info("Applying caching to LMStudio embedding LLM")
@@ -117,5 +108,5 @@ def create_lmstudio_embedding_llm(
             operation="embedding",
             cache=cache,
         )
-
+    
     return result
