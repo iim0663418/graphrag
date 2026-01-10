@@ -11,9 +11,10 @@ import asyncio
 from typing import List, Dict, Any, Optional
 
 try:
-    import lmstudio as lms
+    import lmstudio as lms  # type: ignore[import-untyped]
     LMSTUDIO_AVAILABLE = True
 except ImportError:
+    lms = None  # type: ignore
     LMSTUDIO_AVAILABLE = False
 
 from .base import BaseEmbeddingAdapter
@@ -60,8 +61,11 @@ class LMStudioEmbeddingAdapter(BaseEmbeddingAdapter):
         self._embedding_dimension = None
 
         # Initialize the embedding model
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
+            
         try:
-            self.model = lms.embedding_model(model_name)
+            self.model = lms.embedding_model(model_name)  # type: ignore
             print(f"✓ Loaded LMstudio embedding model: {model_name}")
 
             # Try to determine embedding dimension
