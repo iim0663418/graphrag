@@ -8,7 +8,7 @@ This is the main entry point for integrating LMStudio with GraphRAG.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from graphrag.llm.base import BaseLLM, CachingLLM, RateLimitingLLM
 from graphrag.llm.types import (
@@ -17,8 +17,13 @@ from graphrag.llm.types import (
     EmbeddingInput,
     EmbeddingOutput,
     LLMCache,
-    LLMLimiter,
 )
+
+# Import LLMLimiter with fallback
+try:
+    from graphrag.llm.types import LLMLimiter
+except ImportError:
+    LLMLimiter = Any  # type: ignore
 
 from .adapters.lmstudio_chat_llm import (
     LMStudioChatLLM,
@@ -75,12 +80,28 @@ def create_lmstudio_chat_llm(
     # Apply rate limiting if provided
     if limiter is not None:
         log.info("Applying rate limiting to LMStudio chat LLM")
-        result = RateLimitingLLM(result, limiter)
+        result = cast(
+            BaseLLM[CompletionInput, CompletionOutput],
+            RateLimitingLLM(
+                result, 
+                limiter,
+                operation="chat_completion",
+                retryable_errors=[],
+                rate_limit_errors=[]
+            )
+        )
 
     # Apply caching if provided
     if cache is not None:
         log.info("Applying caching to LMStudio chat LLM")
-        result = CachingLLM(result, cache)
+        result = cast(
+            BaseLLM[CompletionInput, CompletionOutput],
+            CachingLLM(
+                result, 
+                cache,
+                operation="chat_completion"
+            )
+        )
 
     return result
 
@@ -119,12 +140,28 @@ def create_lmstudio_embedding_llm(
     # Apply rate limiting if provided
     if limiter is not None:
         log.info("Applying rate limiting to LMStudio embedding LLM")
-        result = RateLimitingLLM(result, limiter)
+        result = cast(
+            BaseLLM[EmbeddingInput, EmbeddingOutput],
+            RateLimitingLLM(
+                result, 
+                limiter,
+                operation="embedding",
+                retryable_errors=[],
+                rate_limit_errors=[]
+            )
+        )
 
     # Apply caching if provided
     if cache is not None:
         log.info("Applying caching to LMStudio embedding LLM")
-        result = CachingLLM(result, cache)
+        result = cast(
+            BaseLLM[EmbeddingInput, EmbeddingOutput],
+            CachingLLM(
+                result, 
+                cache,
+                operation="embedding"
+            )
+        )
 
     return result
 
