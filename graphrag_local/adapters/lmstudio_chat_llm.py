@@ -10,7 +10,10 @@ import logging
 import re
 from typing import Any
 
-from typing_extensions import Unpack
+try:
+    from typing_extensions import Unpack  # type: ignore[import-untyped]
+except ImportError:
+    from typing import Unpack  # type: ignore[attr-defined]
 
 from graphrag.llm.base import BaseLLM
 from graphrag.llm.types import (
@@ -21,9 +24,10 @@ from graphrag.llm.types import (
 )
 
 try:
-    import lmstudio as lms
+    import lmstudio as lms  # type: ignore[import-untyped]
     LMSTUDIO_AVAILABLE = True
 except ImportError:
+    lms = None  # type: ignore
     LMSTUDIO_AVAILABLE = False
     lms = None
 
@@ -112,7 +116,7 @@ class LMStudioChatLLM(BaseLLM[CompletionInput, CompletionOutput]):
             ImportError: If lmstudio package is not installed
             RuntimeError: If model cannot be loaded
         """
-        if not LMSTUDIO_AVAILABLE:
+        if not LMSTUDIO_AVAILABLE or lms is None:
             msg = (
                 "LMStudio SDK is not installed. "
                 "Please install it with: pip install lmstudio"
@@ -124,7 +128,7 @@ class LMStudioChatLLM(BaseLLM[CompletionInput, CompletionOutput]):
 
         try:
             log.info(f"Loading LMStudio model: {configuration.model}")
-            self.client = lms.llm(configuration.model)
+            self.client = lms.llm(configuration.model)  # type: ignore
             log.info("LMStudio model loaded successfully")
         except Exception as e:
             msg = f"Failed to load LMStudio model '{configuration.model}': {e}"
@@ -153,7 +157,10 @@ class LMStudioChatLLM(BaseLLM[CompletionInput, CompletionOutput]):
         messages = [*history, {"role": "user", "content": input}]
 
         # Create LMStudio Chat object
-        chat = lms.Chat()
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
+            
+        chat = lms.Chat()  # type: ignore
 
         # Add messages to chat
         for msg in messages:
