@@ -8,7 +8,10 @@ replacing OpenAI embedding API calls with local model inference.
 import logging
 from typing import Any
 
-from typing_extensions import Unpack
+try:
+    from typing_extensions import Unpack  # type: ignore[import-untyped]
+except ImportError:
+    from typing import Unpack  # type: ignore[attr-defined]
 
 from graphrag.llm.base import BaseLLM
 from graphrag.llm.types import (
@@ -18,11 +21,11 @@ from graphrag.llm.types import (
 )
 
 try:
-    import lmstudio as lms
+    import lmstudio as lms  # type: ignore[import-untyped]
     LMSTUDIO_AVAILABLE = True
 except ImportError:
     LMSTUDIO_AVAILABLE = False
-    lms = None
+    lms = None  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +92,7 @@ class LMStudioEmbeddingsLLM(BaseLLM[EmbeddingInput, EmbeddingOutput]):
             ImportError: If lmstudio package is not installed
             RuntimeError: If embedding model cannot be loaded
         """
-        if not LMSTUDIO_AVAILABLE:
+        if not LMSTUDIO_AVAILABLE or lms is None:
             msg = (
                 "LMStudio SDK is not installed. "
                 "Please install it with: pip install lmstudio"
@@ -101,7 +104,7 @@ class LMStudioEmbeddingsLLM(BaseLLM[EmbeddingInput, EmbeddingOutput]):
 
         try:
             log.info(f"Loading LMStudio embedding model: {configuration.model}")
-            self.client = lms.embedding_model(configuration.model)
+            self.client = lms.embedding_model(configuration.model)  # type: ignore
             log.info("LMStudio embedding model loaded successfully")
         except Exception as e:
             msg = f"Failed to load LMStudio embedding model '{configuration.model}': {e}"
