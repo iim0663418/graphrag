@@ -74,8 +74,11 @@ class OptimizedLMStudioChatAdapter(BaseLLMAdapter):
         self.top_p = self.config.get("top_p", 1.0)
 
         # Initialize model
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
+            
         try:
-            self.model = lms.llm(model_name)
+            self.model = lms.llm(model_name)  # type: ignore
             log.info(f"✓ Loaded optimized LMstudio model: {model_name}")
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_name}: {e}")
@@ -129,7 +132,10 @@ class OptimizedLMStudioChatAdapter(BaseLLMAdapter):
 
     def _convert_messages_to_chat(self, messages: List[Dict[str, str]]) -> Any:
         """Convert OpenAI-style messages to LMstudio Chat object."""
-        chat = lms.Chat()
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
+            
+        chat = lms.Chat()  # type: ignore
 
         for msg in messages:
             role = msg.get("role", "user")
@@ -328,8 +334,11 @@ class OptimizedLMStudioEmbeddingAdapter(BaseEmbeddingAdapter):
         self._embedding_dimension = None
 
         # Initialize model
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
+            
         try:
-            self.model = lms.embedding_model(model_name)
+            self.model = lms.embedding_model(model_name)  # type: ignore
             log.info(f"✓ Loaded optimized LMstudio embedding model: {model_name}")
             self._detect_embedding_dimension()
         except Exception as e:
