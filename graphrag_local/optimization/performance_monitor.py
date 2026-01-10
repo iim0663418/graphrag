@@ -126,7 +126,7 @@ class PerformanceMonitor:
         # Memory tracking
         if enable_memory_tracking:
             try:
-                import psutil
+                import psutil  # type: ignore[import-untyped]
                 self._process = psutil.Process()
                 self._memory_samples: List[float] = []
             except ImportError:
