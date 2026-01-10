@@ -1,6 +1,55 @@
 # GraphRAG 本地化專案
 
-本專案實現了 Microsoft GraphRAG 與 LMStudio 的完整集成，提供零成本的本地知識圖譜構建解決方案。
+> **注意**: 這是 Microsoft GraphRAG 的 fork 版本，專注於本地化解決方案。本項目獨立維護，不會合併回原倉庫。
+
+## 🎯 本 Fork 的特色
+
+### 核心修復
+- ✅ **解決無限循環問題**: 修復 GraphRAG 實體提取的致命缺陷
+- ✅ **LMStudio 完整集成**: 實現零成本本地運行
+- ✅ **生產就緒**: 14個 parquet 文件驗證成功
+
+### 與原項目的差異
+- **問題修復**: 原項目存在實體提取無限循環問題
+- **本地化**: 專注於本地模型集成，無需外部 API
+- **企業友好**: 完全數據隱私保護
+
+## 🚀 快速開始
+
+1. **克隆本 fork**
+   ```bash
+   git clone https://github.com/iim0663418/graphrag.git
+   cd graphrag
+   ```
+
+2. **應用修復**
+   ```bash
+   python scripts/fix_graphrag_loop.py
+   ```
+
+3. **運行示例**
+   ```bash
+   cd examples/local_deployment
+   python -m graphrag.index --root .
+   ```
+
+## 📋 版本說明
+
+- **v1.0.0-local**: 完整本地化解決方案
+- **基於**: Microsoft GraphRAG (原始版本)
+- **授權**: MIT (與原項目相同)
+
+## ⚠️ 重要聲明
+
+本項目為獨立 fork，專注於本地化功能：
+- 遵循原項目 MIT 授權
+- 不會提交 PR 回原倉庫
+- 獨立維護和演進
+- 歡迎社群使用和貢獻
+
+---
+
+詳細文檔請參考 `FORK_MAINTENANCE.md`
 
 ## 📁 專案結構
 

@@ -1,4 +1,64 @@
-# GraphRAG
+# GraphRAG 本地化增強版 🚀
+
+> **🔥 這是 Microsoft GraphRAG 的增強 Fork 版本** - 專門解決原項目的無限循環問題，實現真正可用的本地化 GraphRAG 解決方案
+
+[![Fork](https://img.shields.io/badge/Fork-microsoft%2Fgraphrag-blue)](https://github.com/microsoft/graphrag)
+[![Local](https://img.shields.io/badge/Local-GraphRAG-green)](https://github.com/iim0663418/graphrag)
+[![LMStudio](https://img.shields.io/badge/LMStudio-Integration-orange)](https://lmstudio.ai/)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)](https://github.com/iim0663418/graphrag/releases)
+
+## 🎯 為什麼選擇這個 Fork？
+
+### ❌ 原項目問題
+- **無限循環缺陷**: 實體提取陷入死循環，索引無法完成
+- **高昂成本**: 依賴 OpenAI API，費用昂貴  
+- **數據隱私**: 企業數據需要發送到外部服務
+
+### ✅ 本 Fork 解決方案
+- **🔧 修復循環問題**: 實施零收益終止機制，徹底解決無限循環
+- **💰 零成本運行**: 完整 LMStudio 集成，無需任何 API 費用
+- **🔒 數據隱私**: 100% 本地處理，企業數據不出本地
+- **📊 驗證成功**: 實際生成 14 個 parquet 文件，證明完整可用
+
+## 🚀 核心差異對比
+
+| 功能 | 原項目 | 本 Fork |
+|------|--------|---------|
+| 實體提取 | ❌ 無限循環 | ✅ 智能終止 |
+| 成本 | 💸 OpenAI API | 💰 完全免費 |
+| 數據隱私 | ⚠️ 外部傳輸 | 🔒 本地處理 |
+| 部署難度 | 🔧 複雜配置 | 🎯 一鍵部署 |
+| 生產就緒 | ⚠️ 不穩定 | ✅ 已驗證 |
+
+## 🛠️ 快速開始
+
+### 1. 克隆並修復
+```bash
+git clone https://github.com/iim0663418/graphrag.git
+cd graphrag
+python scripts/fix_graphrag_loop.py  # 一鍵修復循環問題
+```
+
+### 2. 啟動 LMStudio
+- 加載 `qwen/qwen3-vl-8b` (LLM)
+- 加載 `nomic-embed-text-v1.5` (Embedding)  
+- 啟動服務: http://localhost:1234
+
+### 3. 運行索引
+```bash
+cd examples/local_deployment
+python -m graphrag.index --root .
+```
+
+### 4. 驗證結果
+```bash
+# 應該看到 14 個 parquet 文件
+ls output/*.parquet
+```
+
+---
+
+## 📚 原項目信息
 
 👉 [Use the GraphRAG Accelerator solution](https://github.com/Azure-Samples/graphrag-accelerator) <br/>
 👉 [Microsoft Research Blog Post](https://www.microsoft.com/en-us/research/blog/graphrag-unlocking-llm-discovery-on-narrative-private-data/)<br/>
