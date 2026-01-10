@@ -13,9 +13,10 @@ import logging
 from typing import Any, Dict, List, Optional
 
 try:
-    import lmstudio as lms
+    import lmstudio as lms  # type: ignore[import-untyped]
     LMSTUDIO_AVAILABLE = True
 except ImportError:
+    lms = None  # type: ignore
     LMSTUDIO_AVAILABLE = False
 
 from .base import BaseLLMAdapter, BaseEmbeddingAdapter
@@ -166,12 +167,14 @@ class OptimizedLMStudioChatAdapter(BaseLLMAdapter):
         # Convert messages to hashable format
         prompt_key = self._messages_to_prompt_hash(messages)
 
+        # Prepare cache context
+        cache_context = {
+            "temperature": kwargs.get("temperature", self.temperature),
+            "model": self.model_name,
+        }
+
         # Check cache first
         if self.cache:
-            cache_context = {
-                "temperature": kwargs.get("temperature", self.temperature),
-                "model": self.model_name,
-            }
             cached = self.cache.get(prompt_key, cache_context)
             if cached is not None:
                 log.debug("Cache hit for LLM request")
