@@ -139,7 +139,7 @@ class BatchProcessor:
 
             # Start timer if this is the first item
             if len(self._queue) == 1:
-                self._start_timer(batch_fn, context)
+                asyncio.create_task(self._start_timer(batch_fn, context))
 
             # Process immediately if batch is full
             if len(self._queue) >= self.config.max_batch_size:
