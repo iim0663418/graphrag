@@ -11,9 +11,10 @@ import asyncio
 from typing import List, Dict, Any, Optional
 
 try:
-    import lmstudio as lms
+    import lmstudio as lms  # type: ignore[import-untyped]
     LMSTUDIO_AVAILABLE = True
 except ImportError:
+    lms = None  # type: ignore
     LMSTUDIO_AVAILABLE = False
 
 from .base import BaseLLMAdapter
@@ -62,9 +63,11 @@ class LMStudioChatAdapter(BaseLLMAdapter):
         self.stream = self.config.get("stream", False)
 
         # Initialize the model
-        # Note: Actual initialization may vary based on SDK version
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
+            
         try:
-            self.model = lms.llm(model_name)
+            self.model = lms.llm(model_name)  # type: ignore
             print(f"✓ Loaded LMstudio model: {model_name}")
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_name}: {e}")
@@ -86,7 +89,10 @@ class LMStudioChatAdapter(BaseLLMAdapter):
             This is a prototype implementation. The actual API may differ
             based on LMstudio SDK version.
         """
-        chat = lms.Chat()
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
+            
+        chat = lms.Chat()  # type: ignore
 
         for msg in messages:
             role = msg.get("role", "user")
@@ -218,17 +224,14 @@ class LMStudioCompletionAdapter(BaseLLMAdapter):
         """
         super().__init__(model_name, config)
 
-        if not LMSTUDIO_AVAILABLE:
-            raise ImportError(
-                "lmstudio SDK is not installed. "
-                "Please install it with: pip install lmstudio"
-            )
+        if not LMSTUDIO_AVAILABLE or lms is None:
+            raise RuntimeError("LMStudio SDK not available")
 
         self.temperature = self.config.get("temperature", 0.7)
         self.max_tokens = self.config.get("max_tokens", 2048)
 
         try:
-            self.model = lms.llm(model_name)
+            self.model = lms.llm(model_name)  # type: ignore
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_name}: {e}")
 
