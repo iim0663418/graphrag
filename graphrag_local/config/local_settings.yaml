@@ -1,0 +1,186 @@
+# GraphRAG Local Configuration Template
+#
+# This configuration file demonstrates how to configure GraphRAG to use
+# local LMstudio models instead of cloud-based APIs.
+#
+# Phase 1: Prototype Configuration
+
+# LLM Configuration for text generation
+llm:
+  # Type of LLM adapter to use
+  # Options: "local-lmstudio-chat", "local-lmstudio-completion"
+  type: local-lmstudio-chat
+
+  # Model name as it appears in LMstudio
+  # Examples: "qwen/qwen3-4b-2507", "meta-llama/llama-3.1-8b-instruct"
+  model: "qwen/qwen3-4b-2507"
+
+  # Whether the model supports JSON output
+  # Set to true if your model can generate structured JSON
+  model_supports_json: true
+
+  # Generation parameters
+  temperature: 0.7
+  max_tokens: 2048
+  top_p: 1.0
+
+  # LMstudio specific settings
+  lmstudio:
+    # Host and port where LMstudio is running
+    # Usually localhost for local development
+    host: "localhost"
+    port: 1234
+
+    # Optional: Path to LMstudio installation
+    # lmstudio_path: "/Applications/LMstudio.app"
+
+# Embedding Configuration
+embeddings:
+  llm:
+    # Type of embedding adapter
+    type: local-lmstudio-embedding
+
+    # Embedding model name in LMstudio
+    # Examples: "nomic-embed-text-v1.5", "bge-m3", "bge-large-en-v1.5"
+    model: "nomic-embed-text-v1.5"
+
+    # Batch processing configuration
+    batch_size: 32
+
+    # Whether to normalize embedding vectors
+    normalize: true
+
+    # LMstudio specific settings
+    lmstudio:
+      host: "localhost"
+      port: 1234
+
+# Optimization settings for local execution
+optimization:
+  # Enable caching to reduce redundant LLM calls
+  enable_cache: true
+
+  # Cache backend
+  # Options: "memory", "disk", "sqlite"
+  cache_backend: "memory"
+
+  # Cache directory (for disk/sqlite backends)
+  cache_dir: ".cache/graphrag_local"
+
+  # Batch processing settings
+  batch:
+    # Minimum batch size for batch processing
+    min_batch_size: 8
+
+    # Maximum batch size
+    max_batch_size: 64
+
+    # Enable adaptive batching
+    adaptive: true
+
+# Storage configuration
+storage:
+  # Where to store the knowledge graph and outputs
+  output_dir: "./output"
+
+  # Intermediate cache directory
+  cache_dir: "./cache"
+
+# Chunk configuration for document processing
+chunks:
+  # Size of text chunks (in tokens)
+  size: 300
+
+  # Overlap between chunks (in tokens)
+  overlap: 100
+
+  # Grouping strategy
+  group_by_columns: ["id"]
+
+# Entity extraction configuration
+entity_extraction:
+  # Maximum number of gleanings (iterative extractions)
+  max_gleanings: 1
+
+  # Prompt strategy
+  prompt: "graphrag.prompts.entity_extraction"
+
+  # Entity types to extract
+  entity_types:
+    - "PERSON"
+    - "ORGANIZATION"
+    - "LOCATION"
+    - "EVENT"
+    - "TECHNOLOGY"
+
+# Community detection settings
+community_reports:
+  # Maximum length of community reports (in tokens)
+  max_length: 500
+
+  # Prompt for community summarization
+  prompt: "graphrag.prompts.community_report"
+
+# Global search settings
+global_search:
+  # Maximum number of tokens for global search
+  max_tokens: 12000
+
+  # Map-reduce token limits
+  map_max_tokens: 1000
+  reduce_max_tokens: 2000
+
+# Local search settings
+local_search:
+  # Maximum number of tokens for local search
+  max_tokens: 12000
+
+  # Number of text units to retrieve
+  text_unit_prop: 0.5
+
+  # Number of community reports to use
+  community_prop: 0.1
+
+# Logging configuration
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+
+  # Log file path
+  log_file: "./logs/graphrag_local.log"
+
+  # Console output
+  console: true
+
+# Performance tuning
+performance:
+  # Number of parallel workers for indexing
+  # Adjust based on your CPU/GPU capabilities
+  workers: 4
+
+  # Memory limit (in MB)
+  # Set based on available RAM
+  memory_limit: 8192
+
+  # GPU settings (if applicable)
+  gpu:
+    enabled: false
+    device_id: 0
+
+# Development/Debug settings
+debug:
+  # Enable verbose logging
+  verbose: false
+
+  # Save intermediate results
+  save_intermediate: false
+
+  # Profile performance
+  profile: false
+
+# Notes:
+# 1. Make sure LMstudio is running before starting GraphRAG
+# 2. Load your desired models in LMstudio GUI
+# 3. Verify model names match exactly with LMstudio
+# 4. Adjust batch sizes based on your GPU VRAM
+# 5. Monitor memory usage during indexing

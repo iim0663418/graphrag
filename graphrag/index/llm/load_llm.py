@@ -24,6 +24,17 @@ from graphrag.llm import (
     create_tpm_rpm_limiters,
 )
 
+# Import LMStudio factories
+try:
+    from graphrag_local.lmstudio_factories import (
+        create_lmstudio_chat_llm,
+        create_lmstudio_embedding_llm,
+    )
+    LMSTUDIO_AVAILABLE = True
+except ImportError:
+    LMSTUDIO_AVAILABLE = False
+    log.warning("LMStudio integration not available. Install graphrag_local package to enable.")
+
 if TYPE_CHECKING:
     from datashaper import VerbCallbacks
 
@@ -210,6 +221,107 @@ def _load_static_response(
     return MockCompletionLLM(config.get("responses", []))
 
 
+def _load_lmstudio_chat_llm(
+    on_error: ErrorHandlerFn,
+    cache: LLMCache,
+    config: dict[str, Any],
+) -> CompletionLLM:
+    """Load LMStudio chat LLM."""
+    if not LMSTUDIO_AVAILABLE:
+        msg = "LMStudio integration not available. Install graphrag_local package."
+        raise ImportError(msg)
+
+    lmstudio_config = {
+        "model": config.get("model", ""),
+        "temperature": config.get("temperature", 0.0),
+        "max_tokens": config.get("max_tokens", 4000),
+        "top_p": config.get("top_p", 1.0),
+        "model_supports_json": config.get("model_supports_json", False),
+    }
+
+    limiter = _create_lmstudio_limiter(config)
+    semaphore = _create_lmstudio_semaphore(config)
+
+    return create_lmstudio_chat_llm(
+        config=lmstudio_config,
+        cache=cache,
+        limiter=limiter,
+        semaphore=semaphore,
+        on_error=on_error,
+    )
+
+
+def _load_lmstudio_embedding_llm(
+    on_error: ErrorHandlerFn,
+    cache: LLMCache,
+    config: dict[str, Any],
+) -> EmbeddingLLM:
+    """Load LMStudio embedding LLM."""
+    if not LMSTUDIO_AVAILABLE:
+        msg = "LMStudio integration not available. Install graphrag_local package."
+        raise ImportError(msg)
+
+    lmstudio_config = {
+        "model": config.get("model", config.get("embeddings_model", "")),
+    }
+
+    limiter = _create_lmstudio_limiter(config)
+    semaphore = _create_lmstudio_semaphore(config)
+
+    return create_lmstudio_embedding_llm(
+        config=lmstudio_config,
+        cache=cache,
+        limiter=limiter,
+        semaphore=semaphore,
+        on_error=on_error,
+    )
+
+
+def _create_lmstudio_limiter(config: dict[str, Any]) -> LLMLimiter | None:
+    """Create rate limiter for LMStudio (optional, as local models don't have API limits)."""
+    model_name = config.get("model", "default")
+
+    # Only create limiter if explicitly configured
+    if "tokens_per_minute" not in config and "requests_per_minute" not in config:
+        return None
+
+    if model_name not in _rate_limiters:
+        tpm = config.get("tokens_per_minute", 0)
+        rpm = config.get("requests_per_minute", 0)
+
+        if tpm > 0 or rpm > 0:
+            log.info("create TPM/RPM limiter for LMStudio %s: TPM=%s, RPM=%s", model_name, tpm, rpm)
+            # Create a simple limiter config
+            from graphrag.llm.limiting.create_limiters import create_tpm_rpm_limiters
+            from graphrag.llm.types import LLMConfig
+
+            class SimpleLimiterConfig:
+                def __init__(self, tpm, rpm):
+                    self.tokens_per_minute = tpm
+                    self.requests_per_minute = rpm
+
+            _rate_limiters[model_name] = create_tpm_rpm_limiters(SimpleLimiterConfig(tpm, rpm))
+        else:
+            return None
+
+    return _rate_limiters.get(model_name)
+
+
+def _create_lmstudio_semaphore(config: dict[str, Any]) -> asyncio.Semaphore | None:
+    """Create concurrency semaphore for LMStudio."""
+    model_name = config.get("model", "default")
+    concurrency = config.get("concurrent_requests", 4)  # Default to 4 concurrent requests
+
+    if not concurrency:
+        return None
+
+    if model_name not in _semaphores:
+        log.info("create concurrency limiter for LMStudio %s: %s", model_name, concurrency)
+        _semaphores[model_name] = asyncio.Semaphore(concurrency)
+
+    return _semaphores[model_name]
+
+
 loaders = {
     LLMType.OpenAI: {
         "load": _load_openai_completion_llm,
@@ -233,6 +345,14 @@ loaders = {
     },
     LLMType.AzureOpenAIEmbedding: {
         "load": _load_azure_openai_embeddings_llm,
+        "chat": False,
+    },
+    LLMType.LMStudioChat: {
+        "load": _load_lmstudio_chat_llm,
+        "chat": True,
+    },
+    LLMType.LMStudioEmbedding: {
+        "load": _load_lmstudio_embedding_llm,
         "chat": False,
     },
     LLMType.StaticResponse: {

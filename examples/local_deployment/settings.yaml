@@ -1,0 +1,44 @@
+llm:
+  type: openai_chat
+  api_base: http://localhost:1234/v1
+  api_key: lm-studio
+  model: qwen/qwen3-vl-8b
+  max_tokens: 1000
+  temperature: 0.0
+
+embeddings:
+  llm:
+    type: openai_embedding
+    api_base: http://localhost:1234/v1
+    api_key: lm-studio
+    model: nomic-embed-text-v1.5
+
+chunks:
+  size: 300
+  overlap: 50
+
+input:
+  type: file
+  file_type: text
+  base_dir: input
+  file_pattern: ".*\\.txt$"
+
+cache:
+  type: file
+  base_dir: cache
+
+storage:
+  type: file
+  base_dir: output
+
+entity_extraction:
+  max_gleanings: 1
+  
+claim_extraction:
+  enabled: false
+
+community_reports:
+  enabled: false
+
+summarize_descriptions:
+  enabled: false

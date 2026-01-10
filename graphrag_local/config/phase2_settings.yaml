@@ -1,0 +1,133 @@
+# GraphRAG Phase 2 Configuration - Full LMStudio Integration
+#
+# This configuration demonstrates Phase 2 integration with GraphRAG's core
+# configuration system, using the standard GraphRAG configuration format.
+
+# LLM Configuration for text generation (entity extraction, summarization, etc.)
+llm:
+  type: lmstudio_chat  # Use LMStudio chat completion
+  model: "qwen/qwen3-4b-2507"  # Your LMStudio model identifier
+  temperature: 0.0
+  max_tokens: 4000
+  top_p: 1.0
+  model_supports_json: true  # Set to true if your model supports JSON mode
+  concurrent_requests: 4  # Number of concurrent requests to LMStudio
+
+# Embedding Configuration
+embeddings:
+  llm:
+    type: lmstudio_embedding  # Use LMStudio embedding model
+    model: "nomic-embed-text-v1.5"  # Your embedding model in LMStudio
+
+  # Embedding batch configuration
+  batch_size: 16
+  batch_max_tokens: 8191
+
+# Entity Extraction Configuration
+entity_extraction:
+  llm:
+    type: lmstudio_chat
+    model: "qwen/qwen3-4b-2507"
+    temperature: 0.0
+    max_tokens: 4000
+    model_supports_json: true
+
+  # Prompt configuration
+  prompt: "prompts/entity_extraction.txt"
+  max_gleanings: 2  # Reduced for local models to improve speed
+
+# Summarization Configuration
+summarize_descriptions:
+  llm:
+    type: lmstudio_chat
+    model: "qwen/qwen3-4b-2507"
+    temperature: 0.0
+    max_tokens: 2000
+
+  prompt: "prompts/summarize_descriptions.txt"
+
+# Community Reports Configuration
+community_reports:
+  llm:
+    type: lmstudio_chat
+    model: "qwen/qwen3-4b-2507"
+    temperature: 0.0
+    max_tokens: 4000
+
+  prompt: "prompts/community_report.txt"
+
+# Claim Extraction Configuration (optional)
+claim_extraction:
+  enabled: false  # Disable if not needed to save compute
+  llm:
+    type: lmstudio_chat
+    model: "qwen/qwen3-4b-2507"
+    temperature: 0.0
+    max_tokens: 2000
+
+# Chunks Configuration
+chunks:
+  size: 1200
+  overlap: 100
+  group_by_columns: [id]
+
+# Input Configuration
+input:
+  type: file
+  file_type: text
+  base_dir: "input"
+  file_pattern: ".*\\.txt$"
+  encoding: "utf-8"
+
+# Cache Configuration
+cache:
+  type: file
+  base_dir: "cache"
+
+# Storage Configuration
+storage:
+  type: file
+  base_dir: "output"
+
+# Reporting Configuration
+reporting:
+  type: file
+  base_dir: "output"
+
+# Snapshot Configuration
+snapshots:
+  graphml: true  # Enable GraphML output for visualization
+  raw_entities: true
+  top_level_nodes: true
+
+# Additional Local Optimization Settings
+# These settings are optimized for local LMStudio inference
+
+# Parallelization - adjust based on your hardware
+parallelization:
+  num_threads: 4  # Number of parallel processing threads
+  stagger: 0.5  # Delay between thread starts (seconds)
+
+# Local Search Configuration (for query time)
+local_search:
+  text_unit_prop: 0.5
+  community_prop: 0.25
+  conversation_history_max_turns: 5
+  top_k_entities: 10
+  top_k_relationships: 10
+  max_tokens: 8000
+
+# Global Search Configuration (for query time)
+global_search:
+  max_tokens: 8000
+  data_max_tokens: 8000
+  map_max_tokens: 2000
+  reduce_max_tokens: 4000
+  concurrency: 4
+
+# Notes for Phase 2:
+# 1. Make sure LMStudio is running with your models loaded
+# 2. The 'type' field now uses standard GraphRAG enums: lmstudio_chat, lmstudio_embedding
+# 3. This configuration works with GraphRAG's built-in configuration loader
+# 4. Use 'graphrag index --root .' to run indexing with this config
+# 5. Use 'graphrag query' for querying the indexed knowledge graph

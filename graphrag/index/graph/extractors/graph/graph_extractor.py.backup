@@ -165,10 +165,6 @@ class GraphExtractor:
                 history=response.history,
             )
             results += response.output or ""
-            # PATCH: Zero-yield stopping - 如果沒有新內容則停止
-            if not (response.output or "").strip():
-                print(f"Gleaning {i+1} 產生空結果，提前停止")
-                break
 
             # if this is the final glean, don't bother updating the continuation flag
             if i >= self._max_gleanings - 1:
