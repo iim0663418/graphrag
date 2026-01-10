@@ -19,13 +19,6 @@ from graphrag.llm.types import (
     LLMCache,
 )
 
-# Import LLMLimiter with fallback
-try:
-    from graphrag.llm.types import LLMLimiter
-except ImportError:
-    from typing import Any
-    LLMLimiter = Any
-
 from .adapters.lmstudio_chat_llm import (
     LMStudioChatLLM,
     LMStudioConfiguration,
