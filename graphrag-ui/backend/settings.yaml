@@ -2,8 +2,8 @@ llm:
   type: openai_chat
   api_base: http://localhost:1234/v1
   api_key: lm-studio
-  model: google/gemma-3-4b
-  max_tokens: 4000
+  model: qwen/qwen3-vl-8b
+  max_tokens: 1000
   temperature: 0.0
 
 embeddings:
@@ -33,7 +33,7 @@ storage:
 
 entity_extraction:
   max_gleanings: 1
-  
+
 claim_extraction:
   enabled: false
 
