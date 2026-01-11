@@ -66,3 +66,40 @@ ragtest/
 .ragtest/
 .pipelines
 .pipeline
+
+# GraphRAG UI
+graphrag-ui/backend/venv/
+graphrag-ui/backend/__pycache__/
+graphrag-ui/frontend/node_modules/
+graphrag-ui/frontend/dist/
+graphrag-ui/frontend/.vite/
+graphrag-ui/tests/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+/tmp/
+*.tmp
+*.temp
+*.log
+.specify/logs/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

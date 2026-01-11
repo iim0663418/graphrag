@@ -1,0 +1,532 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  FileText, 
+  Database, 
+  Search, 
+  Share2, 
+  Upload, 
+  Trash2, 
+  Play, 
+  CheckCircle2, 
+  AlertCircle, 
+  Loader2,
+  ChevronRight,
+  Info,
+  Maximize2,
+  Settings,
+  Menu,
+  X
+} from 'lucide-react';
+import * as d3 from 'd3';
+
+// --- 模擬數據與類型定義 ---
+const INITIAL_FILES = [
+  { id: '1', name: '2024_市場研究報告.txt', size: '1.2 MB', status: 'indexed', date: '2026-01-10' },
+  { id: '2', name: '產品架構設計_v2.csv', size: '450 KB', status: 'indexed', date: '2026-01-11' },
+];
+
+const MOCK_GRAPH_DATA = {
+  nodes: [
+    { id: 'GraphRAG', group: 1, val: 20 },
+    { id: 'React', group: 2, val: 15 },
+    { id: 'D3.js', group: 2, val: 12 },
+    { id: 'Knowledge Management', group: 1, val: 18 },
+    { id: 'Indexing', group: 3, val: 10 },
+    { id: 'Local Search', group: 3, val: 10 },
+    { id: 'Vector DB', group: 4, val: 14 },
+    { id: 'LLM', group: 4, val: 16 },
+  ],
+  links: [
+    { source: 'GraphRAG', target: 'Knowledge Management' },
+    { source: 'GraphRAG', target: 'Indexing' },
+    { source: 'GraphRAG', target: 'React' },
+    { source: 'GraphRAG', target: 'D3.js' },
+    { source: 'Indexing', target: 'Vector DB' },
+    { source: 'Local Search', target: 'LLM' },
+    { source: 'Local Search', target: 'GraphRAG' },
+    { source: 'Knowledge Management', target: 'LLM' },
+  ]
+};
+
+// --- 組件: 文檔管理模組 ---
+const DocumentModule = ({ files, onUpload, onDelete }) => {
+  const [isDragging, setIsDragging] = useState(false);
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-semibold text-gray-800">文檔管理</h2>
+        <span className="text-sm text-gray-500">共 {files.length} 份文件</span>
+      </div>
+
+      {/* 上傳區 */}
+      <div 
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setIsDragging(false); onUpload(e.dataTransfer.files[0]?.name); }}
+        className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center transition-all ${
+          isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white hover:border-blue-400'
+        }`}
+      >
+        <div className="bg-blue-100 p-4 rounded-full mb-4">
+          <Upload className="text-blue-600 w-8 h-8" />
+        </div>
+        <p className="text-gray-700 font-medium">拖拽文件至此處或點擊上傳</p>
+        <p className="text-gray-400 text-sm mt-1">支持 .txt, .csv 格式 (最大 20MB)</p>
+      </div>
+
+      {/* 文件列表 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-gray-50 border-bottom border-gray-100 text-gray-500 text-sm uppercase">
+            <tr>
+              <th className="px-6 py-4 font-semibold">文件名</th>
+              <th className="px-6 py-4 font-semibold">大小</th>
+              <th className="px-6 py-4 font-semibold">狀態</th>
+              <th className="px-6 py-4 font-semibold">日期</th>
+              <th className="px-6 py-4 font-semibold text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {files.map(file => (
+              <tr key={file.id} className="hover:bg-gray-50 transition-colors group">
+                <td className="px-6 py-4 flex items-center space-x-3">
+                  <FileText className="text-blue-500 w-5 h-5" />
+                  <span className="font-medium text-gray-700">{file.name}</span>
+                </td>
+                <td className="px-6 py-4 text-gray-500 text-sm">{file.size}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    file.status === 'indexed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {file.status === 'indexed' ? '已索引' : '待處理'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-gray-500 text-sm">{file.date}</td>
+                <td className="px-6 py-4 text-right">
+                  <button 
+                    onClick={() => onDelete(file.id)}
+                    className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// --- 組件: 索引管理模組 ---
+const IndexingModule = ({ isIndexing, startIndex, progress }) => {
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center max-w-2xl mx-auto mt-10">
+        <div className="mb-6 relative inline-block">
+          <div className={`p-6 rounded-full ${isIndexing ? 'bg-blue-50' : 'bg-gray-50'}`}>
+            {isIndexing ? (
+              <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+            ) : (
+              <Database className="w-12 h-12 text-gray-400" />
+            )}
+          </div>
+          {progress === 100 && !isIndexing && (
+            <div className="absolute -right-2 -bottom-2 bg-green-500 rounded-full p-1 border-4 border-white">
+              <CheckCircle2 className="w-5 h-5 text-white" />
+            </div>
+          )}
+        </div>
+        
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">GraphRAG 索引引擎</h2>
+        <p className="text-gray-500 mb-8 px-10">
+          啟動索引將掃描您的地端文檔，提取實體、關係並構建知識圖譜。
+        </p>
+
+        {isIndexing ? (
+          <div className="space-y-4">
+            <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+              <div 
+                className="bg-blue-600 h-full transition-all duration-500 ease-out" 
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-blue-600 font-medium">正在處理實體關係...</span>
+              <span className="text-gray-500 font-mono">{progress}%</span>
+            </div>
+          </div>
+        ) : (
+          <button 
+            onClick={startIndex}
+            className="inline-flex items-center px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all shadow-lg shadow-blue-200"
+          >
+            <Play className="mr-2 fill-current" size={18} />
+            {progress === 100 ? '重新更新索引' : '開始構建索引'}
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+        {[
+          { label: '提取實體', value: '1,284', icon: <Info size={16} /> },
+          { label: '建立關係', value: '3,502', icon: <Share2 size={16} /> },
+          { label: '平均深度', value: '3.2', icon: <ChevronRight size={16} /> },
+        ].map((stat, i) => (
+          <div key={i} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+            <div className="flex items-center text-gray-400 text-xs mb-2 uppercase tracking-wider">
+              {stat.icon} <span className="ml-2">{stat.label}</span>
+            </div>
+            <div className="text-2xl font-bold text-gray-800">{progress === 100 ? stat.value : '-'}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- 組件: 智能查詢模組 ---
+const SearchModule = () => {
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('global');
+  const [isSearching, setIsSearching] = useState(false);
+  const [results, setResults] = useState([]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (!query) return;
+    setIsSearching(true);
+    // 模擬搜索延遲
+    setTimeout(() => {
+      setResults([
+        { id: 1, title: '關於 GraphRAG 的核心概念', snippet: 'GraphRAG 結合了知識圖譜的結構性數據與 LLM 的生成能力，能夠提供更具脈絡的回答...', score: 0.98 },
+        { id: 2, title: 'React 18 並行渲染機制', snippet: '在現代知識管理系統中，React 18 的渲染機制優化了大型圖譜數據的交互體驗...', score: 0.85 },
+        { id: 3, title: '向量數據庫與實體對齊', snippet: '實體對齊是構建精準索引的關鍵步驟，這決定了查詢時的召回精準度...', score: 0.72 }
+      ]);
+      setIsSearching(false);
+    }, 800);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="space-y-4">
+        <div className="flex space-x-2">
+          {['global', 'local'].map((t) => (
+            <button
+              key={t}
+              onClick={() => setType(t)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                type === t ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {t === 'global' ? '全域檢索' : '本地檢索'}
+            </button>
+          ))}
+        </div>
+        
+        <form onSubmit={handleSearch} className="relative group">
+          <input 
+            type="text" 
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="輸入您的問題，例如：GraphRAG 是如何運作的？"
+            className="w-full pl-12 pr-24 py-4 bg-white rounded-2xl border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all text-lg shadow-sm"
+          />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500" />
+          <button 
+            type="submit"
+            className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-blue-700 transition-colors"
+          >
+            {isSearching ? <Loader2 className="animate-spin w-5 h-5" /> : '搜索'}
+          </button>
+        </form>
+      </div>
+
+      <div className="space-y-4">
+        {isSearching ? (
+          <div className="flex flex-col items-center py-20 text-gray-400">
+            <Loader2 className="animate-spin w-8 h-8 mb-4" />
+            <p>正在從知識圖譜中檢索內容...</p>
+          </div>
+        ) : results.length > 0 ? (
+          results.map((res) => (
+            <div key={res.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="text-xl font-bold text-gray-800 group-hover:text-blue-600 transition-colors">{res.title}</h3>
+                <span className="text-xs font-mono bg-blue-50 text-blue-600 px-2 py-1 rounded">Score: {res.score}</span>
+              </div>
+              <p className="text-gray-600 leading-relaxed mb-4">{res.snippet}</p>
+              <div className="flex items-center text-blue-500 text-sm font-semibold">
+                查看詳細脈絡 <ChevronRight size={16} />
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-20 text-gray-400 border-2 border-dashed border-gray-100 rounded-3xl">
+            <Database className="mx-auto mb-4 opacity-20" size={48} />
+            <p>準備就緒，請在上方輸入框開始您的知識探索</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- 組件: 知識圖譜模組 (D3.js) ---
+const KnowledgeGraph = () => {
+  const svgRef = useRef();
+  const [selectedNode, setSelectedNode] = useState(null);
+
+  useEffect(() => {
+    if (!svgRef.current) return;
+
+    const width = svgRef.current.clientWidth;
+    const height = 500;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll("*").remove();
+
+    const simulation = d3.forceSimulation(MOCK_GRAPH_DATA.nodes)
+      .force("link", d3.forceLink(MOCK_GRAPH_DATA.links).id(d => d.id).distance(100))
+      .force("charge", d3.forceManyBody().strength(-300))
+      .force("center", d3.forceCenter(width / 2, height / 2));
+
+    const link = svg.append("g")
+      .attr("stroke", "#e2e8f0")
+      .attr("stroke-opacity", 0.6)
+      .selectAll("line")
+      .data(MOCK_GRAPH_DATA.links)
+      .join("line")
+      .attr("stroke-width", 2);
+
+    const node = svg.append("g")
+      .selectAll("g")
+      .data(MOCK_GRAPH_DATA.nodes)
+      .join("g")
+      .call(d3.drag()
+        .on("start", (event, d) => {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        })
+        .on("drag", (event, d) => {
+          d.fx = event.x;
+          d.fy = event.y;
+        })
+        .on("end", (event, d) => {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        }))
+      .on("click", (event, d) => setSelectedNode(d));
+
+    node.append("circle")
+      .attr("r", d => d.val)
+      .attr("fill", d => d.group === 1 ? "#2563eb" : d.group === 2 ? "#10b981" : "#f59e0b");
+
+    node.append("text")
+      .text(d => d.id)
+      .attr("x", 0)
+      .attr("y", d => d.val + 15)
+      .attr("text-anchor", "middle")
+      .attr("class", "text-[10px] font-medium fill-gray-600");
+
+    simulation.on("tick", () => {
+      link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+      node.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+  }, []);
+
+  return (
+    <div className="flex h-full space-x-6 animate-in fade-in duration-500">
+      <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden h-[600px]">
+        <div className="absolute top-4 left-4 z-10 flex space-x-2">
+          <button className="bg-white/80 backdrop-blur p-2 rounded-lg border border-gray-100 shadow-sm hover:bg-white"><Maximize2 size={16}/></button>
+          <div className="bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg border border-gray-100 shadow-sm text-xs font-medium text-gray-500 flex items-center">
+            節點數: {MOCK_GRAPH_DATA.nodes.length} | 關係數: {MOCK_GRAPH_DATA.links.length}
+          </div>
+        </div>
+        <svg ref={svgRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+      </div>
+
+      {/* 詳情面板 */}
+      <div className="w-80 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 overflow-y-auto">
+        <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center">
+          <Info className="mr-2 text-blue-500" size={18}/> 節點詳情
+        </h3>
+        
+        {selectedNode ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-gray-50 rounded-xl">
+              <label className="text-[10px] uppercase text-gray-400 font-bold">名稱</label>
+              <div className="text-xl font-bold text-gray-800">{selectedNode.id}</div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-xl">
+              <label className="text-[10px] uppercase text-gray-400 font-bold">權重 (Centrality)</label>
+              <div className="text-xl font-bold text-blue-600">{selectedNode.val}</div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-gray-400 font-bold">相關摘要</label>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                這是根據您的地端文檔提取出的實體節點。它與其他 {MOCK_GRAPH_DATA.links.filter(l => l.source.id === selectedNode.id || l.target.id === selectedNode.id).length} 個概念存在直接關聯。
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-gray-400 text-center">
+            <div className="mb-4 bg-gray-50 p-4 rounded-full"><Share2 size={32} /></div>
+            <p>點擊圖譜中的節點<br/>以查看詳細屬性</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- 主應用入口 ---
+export default function App() {
+  const [activeTab, setActiveTab] = useState('documents');
+  const [files, setFiles] = useState(INITIAL_FILES);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [indexProgress, setIndexProgress] = useState(0);
+
+  // 模擬文件操作
+  const handleUpload = (name) => {
+    if (!name) return;
+    const newFile = {
+      id: Date.now().toString(),
+      name: name,
+      size: `${(Math.random() * 5).toFixed(1)} MB`,
+      status: 'pending',
+      date: new Date().toISOString().split('T')[0]
+    };
+    setFiles([newFile, ...files]);
+  };
+
+  const handleDelete = (id) => {
+    setFiles(files.filter(f => f.id !== id));
+  };
+
+  // 模擬索引流程
+  const startIndex = () => {
+    setIsIndexing(true);
+    setIndexProgress(0);
+    const interval = setInterval(() => {
+      setIndexProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsIndexing(false);
+          // 將所有文件更新為已索引
+          setFiles(files.map(f => ({ ...f, status: 'indexed' })));
+          return 100;
+        }
+        return prev + 5;
+      });
+    }, 200);
+  };
+
+  const menuItems = [
+    { id: 'documents', label: '文檔管理', icon: <FileText size={20} /> },
+    { id: 'indexing', label: '索引管理', icon: <Database size={20} /> },
+    { id: 'search', label: '智能查詢', icon: <Search size={20} /> },
+    { id: 'graph', label: '知識圖譜', icon: <Share2 size={20} /> },
+  ];
+
+  return (
+    <div className="flex h-screen bg-[#f8fafc] font-sans text-gray-900 overflow-hidden">
+      {/* 側邊欄 */}
+      <aside className="w-72 bg-white border-r border-gray-200 flex flex-col z-20">
+        <div className="p-8">
+          <div className="flex items-center space-x-3 mb-10">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+              <Share2 className="text-white" size={24} />
+            </div>
+            <span className="text-xl font-bold tracking-tight">GraphRAG <span className="text-blue-600">KM</span></span>
+          </div>
+
+          <nav className="space-y-1">
+            {menuItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+                  activeTab === item.id 
+                    ? 'bg-blue-50 text-blue-600' 
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                <span className={`mr-3 ${activeTab === item.id ? 'text-blue-600' : 'text-gray-400'}`}>
+                  {item.icon}
+                </span>
+                {item.label}
+                {activeTab === item.id && <div className="ml-auto w-1.5 h-1.5 bg-blue-600 rounded-full" />}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="mt-auto p-8 border-t border-gray-100">
+          <button className="flex items-center text-gray-400 hover:text-gray-600 transition-colors text-sm font-medium">
+            <Settings size={18} className="mr-3" /> 系統設置
+          </button>
+        </div>
+      </aside>
+
+      {/* 主內容區 */}
+      <main className="flex-1 overflow-y-auto relative p-10">
+        <header className="flex justify-between items-center mb-10">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {menuItems.find(i => i.id === activeTab).label}
+            </h1>
+            <p className="text-gray-500 mt-1">
+              {activeTab === 'documents' && '管理您的本地數據源'}
+              {activeTab === 'indexing' && '將文檔轉化為結構化的知識網絡'}
+              {activeTab === 'search' && '基於全局與本地脈絡的高級檢索'}
+              {activeTab === 'graph' && '視覺化探索知識點間的隱性聯繫'}
+            </p>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="flex -space-x-2">
+              <div className="w-8 h-8 rounded-full border-2 border-white bg-blue-500" />
+              <div className="w-8 h-8 rounded-full border-2 border-white bg-green-500" />
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-bold">Admin User</div>
+              <div className="text-xs text-green-500 flex items-center justify-end">
+                <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5 animate-pulse" /> 地端連接中
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* 內容分發 */}
+        <section>
+          {activeTab === 'documents' && (
+            <DocumentModule 
+              files={files} 
+              onUpload={handleUpload} 
+              onDelete={handleDelete} 
+            />
+          )}
+          {activeTab === 'indexing' && (
+            <IndexingModule 
+              isIndexing={isIndexing} 
+              startIndex={startIndex} 
+              progress={indexProgress} 
+            />
+          )}
+          {activeTab === 'search' && <SearchModule />}
+          {activeTab === 'graph' && <KnowledgeGraph />}
+        </section>
+      </main>
+    </div>
+  );
+}
