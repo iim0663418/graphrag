@@ -82,14 +82,11 @@ const useAppStore = createStore((set, get) => ({
   
   setActiveTab: (tab) => set({ activeTab: tab }),
   setToast: (toast) => set({ toast }),
-  addFile: (name) => {
-    if (!name) return;
-    
-    // 創建臨時文件對象用於上傳
-    const tempFile = new File([''], name, { type: 'text/plain' });
-    
-    // 調用後端 API 上傳文件
-    GraphRAGAPI.uploadFile(tempFile)
+  addFile: (file) => {
+    if (!file) return;
+
+    // 調用後端 API 上傳文件（傳送實際檔案物件）
+    GraphRAGAPI.uploadFile(file)
       .then(response => {
         // 後端回應格式：{ "message": "檔案上傳成功", "file": FileInfo }
         const fileInfo = response.file;
@@ -107,7 +104,7 @@ const useAppStore = createStore((set, get) => ({
         // 上傳失敗時仍添加到列表，但標記為錯誤
         const newFile = {
           id: Date.now().toString(),
-          name,
+          name: file.name,
           size: 'Upload Failed',
           status: 'error',
           date: new Date().toISOString().split('T')[0]
@@ -714,7 +711,7 @@ const FileUploadZone = () => {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      addFile(file.name);
+      addFile(file);
       // 重置 input 以允許選擇相同檔案
       e.target.value = '';
     }
@@ -725,7 +722,7 @@ const FileUploadZone = () => {
       onClick={handleClick}
       onDragOver={(e) => { e.preventDefault(); setDragState('hover'); }}
       onDragLeave={() => setDragState('idle')}
-      onDrop={(e) => { e.preventDefault(); setDragState('dropping'); addFile(e.dataTransfer.files[0]?.name); setTimeout(() => setDragState('idle'), 500); }}
+      onDrop={(e) => { e.preventDefault(); setDragState('dropping'); addFile(e.dataTransfer.files[0]); setTimeout(() => setDragState('idle'), 500); }}
       className={`border-2 border-dashed rounded-[40px] p-20 transition-all flex flex-col items-center justify-center cursor-pointer group ${
         dragState === 'hover' ? 'border-blue-600 bg-slate-50 scale-[1.01] shadow-2xl' : 'border-slate-200 bg-transparent hover:border-blue-300 hover:bg-slate-50/50'
       }`}
@@ -734,7 +731,7 @@ const FileUploadZone = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.csv"
+        accept=".txt,.csv,.json,.md"
         onChange={handleFileChange}
         className="hidden"
         aria-label="檔案上傳"
@@ -744,7 +741,7 @@ const FileUploadZone = () => {
         <Upload className="text-white" size={36} />
       </div>
       <p className="font-black text-4xl text-slate-900 mb-4 tracking-tighter">數據中心匯入點</p>
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">點擊或拖放檔案至此處執行離線分析 • 限制 20MB • 支援 .TXT, .CSV</p>
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">點擊或拖放檔案至此處執行離線分析 • 限制 20MB • 支援 .TXT, .CSV, .JSON, .MD</p>
     </div>
   );
 };
@@ -792,14 +789,24 @@ const KnowledgeTopology = () => {
         setGraphData(data);
       } catch (err) {
         console.error('載入圖譜數據失敗:', err);
-        // 載入失敗時使用備用數據
+        // 載入失敗時顯示有意義的空狀態提示
         setGraphData({
           nodes: [
-            { id: 'GraphRAG', group: 1, val: 34 },
-            { id: 'Loading Failed', group: 2, val: 20 }
+            { id: '請先上傳檔案', group: 1, val: 40 },
+            { id: '執行索引構建', group: 2, val: 35 },
+            { id: '即可生成知識圖譜', group: 3, val: 30 }
           ],
-          links: [],
-          stats: { total_entities: 0, total_relationships: 0 }
+          links: [
+            { source: '請先上傳檔案', target: '執行索引構建' },
+            { source: '執行索引構建', target: '即可生成知識圖譜' }
+          ],
+          stats: {
+            total_entities: 0,
+            total_relationships: 0,
+            displayed_nodes: 0,
+            isEmpty: true,
+            message: '尚未建立知識圖譜索引'
+          }
         });
       } finally {
         setLoading(false);
@@ -850,12 +857,17 @@ const KnowledgeTopology = () => {
       <div ref={containerRef} className="flex-1 bg-white rounded-[60px] border border-slate-100 shadow-2xl relative overflow-hidden">
         <svg ref={svgRef} className="w-full h-full" />
         <div className="absolute top-10 left-10 bg-slate-900 text-white px-6 py-2.5 rounded-[20px] text-[10px] font-black uppercase tracking-[0.25em] shadow-2xl flex items-center border border-slate-700">
-          <Activity size={14} className="mr-3 text-emerald-400 animate-pulse" /> 
-          {loading ? 'Loading Graph Data...' : 'Knowledge Topology Network'}
+          <Activity size={14} className="mr-3 text-emerald-400 animate-pulse" />
+          {loading ? 'Loading Graph Data...' : (graphData?.stats?.isEmpty ? '等待知識圖譜數據' : 'Knowledge Topology Network')}
         </div>
-        {graphData?.stats && (
+        {graphData?.stats && !graphData.stats.isEmpty && (
           <div className="absolute top-20 left-10 bg-blue-600 text-white px-4 py-2 rounded-[16px] text-[9px] font-black uppercase tracking-wider shadow-lg">
             {graphData.stats.displayed_nodes} / {graphData.stats.total_entities} Entities
+          </div>
+        )}
+        {graphData?.stats?.isEmpty && (
+          <div className="absolute top-20 left-10 bg-amber-500 text-white px-4 py-2 rounded-[16px] text-[9px] font-black uppercase tracking-wider shadow-lg">
+            {graphData.stats.message}
           </div>
         )}
       </div>
@@ -865,21 +877,33 @@ const KnowledgeTopology = () => {
           <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="p-8 bg-slate-900 text-white rounded-[36px] shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform duration-700"><Network size={100} /></div>
-              <label className="text-[10px] uppercase text-slate-500 font-black tracking-[0.25em] mb-2 block">Entity Identifier</label>
+              <label className="text-[10px] uppercase text-slate-500 font-black tracking-[0.25em] mb-2 block">
+                {graphData?.stats?.isEmpty ? '操作步驟' : 'Entity Identifier'}
+              </label>
               <div className="text-4xl font-black tracking-tighter">{selectedNode.id}</div>
             </div>
             <div className="space-y-6">
               <div className="flex items-center space-x-3 text-blue-600">
-                <Network size={18} />
-                <label className="text-[10px] uppercase font-black tracking-[0.2em]">語義架構影響因子</label>
+                {graphData?.stats?.isEmpty ? <Lightbulb size={18} /> : <Network size={18} />}
+                <label className="text-[10px] uppercase font-black tracking-[0.2em]">
+                  {graphData?.stats?.isEmpty ? '使用說明' : '語義架構影響因子'}
+                </label>
               </div>
-              <p className="text-sm text-slate-500 leading-relaxed font-bold tracking-tight opacity-80">該核心實體節點直接決定了地端知識庫的跨區域一致性。透過語義嵌入空間的深度分析，系統確定其為目前知識網格中的主導聚合點，具備高中心性指標。</p>
+              <p className="text-sm text-slate-500 leading-relaxed font-bold tracking-tight opacity-80">
+                {graphData?.stats?.isEmpty
+                  ? '知識圖譜需要先完成資料索引才能顯示。請前往「文檔匯入」頁面上傳您的文件，然後在「索引中心」執行索引構建流程。索引完成後，這裡將顯示完整的實體關聯網絡圖譜。'
+                  : '該核心實體節點直接決定了地端知識庫的跨區域一致性。透過語義嵌入空間的深度分析，系統確定其為目前知識網格中的主導聚合點，具備高中心性指標。'}
+              </p>
             </div>
           </div>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center text-slate-200">
             <div className="w-24 h-24 bg-slate-50 rounded-[32px] flex items-center justify-center mb-8 border border-slate-100 shadow-inner"><Share2 size={48} /></div>
-            <p className="font-black text-xs uppercase tracking-[0.4em] leading-loose text-slate-300">請在視窗中選取節點<br/>以分析核心脈絡關係</p>
+            <p className="font-black text-xs uppercase tracking-[0.4em] leading-loose text-slate-300">
+              {graphData?.stats?.isEmpty
+                ? '請先上傳文件並完成索引<br/>以建立知識圖譜網絡'
+                : '請在視窗中選取節點<br/>以分析核心脈絡關係'}
+            </p>
           </div>
         )}
       </div>

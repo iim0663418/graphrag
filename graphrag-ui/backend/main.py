@@ -18,6 +18,8 @@ from datetime import datetime
 import logging
 import shutil
 import subprocess
+import markdown
+from bs4 import BeautifulSoup
 
 from services.graphrag_service import GraphRagService
 
@@ -32,8 +34,8 @@ graphrag_service: Optional[GraphRagService] = None
 BACKEND_ROOT = Path(__file__).parent
 INPUT_DIR = BACKEND_ROOT / "input"
 OUTPUT_DIR = BACKEND_ROOT / "output"
-# GraphRAG 僅支援 .txt 和 .csv 格式 (參考 graphrag/config/enums.py InputFileType)
-ALLOWED_EXTENSIONS = {".txt", ".csv"}
+# GraphRAG 支援 .txt, .csv, .json 格式 (參考 graphrag/config/enums.py InputFileType)
+ALLOWED_EXTENSIONS = {".txt", ".csv", ".json", ".md"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 # 確保目錄存在
@@ -169,8 +171,31 @@ async def upload_file(file: UploadFile = File(...)):
         if file_size == 0:
             raise HTTPException(status_code=400, detail="檔案內容為空")
 
+        # 如果是 Markdown 檔案，轉換為純文字
+        if file_ext == ".md":
+            try:
+                # 將 bytes 轉換為字串
+                md_content = file_content.decode("utf-8")
+                # Markdown 轉 HTML
+                html_content = markdown.markdown(md_content)
+                # HTML 轉純文字
+                soup = BeautifulSoup(html_content, "html.parser")
+                text_content = soup.get_text()
+                # 更新內容和副檔名
+                file_content = text_content.encode("utf-8")
+                file_ext = ".txt"
+                # 更新檔名（移除 .md，加上 .txt）
+                original_filename = Path(file.filename).stem + ".txt"
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Markdown 轉換失敗: {str(e)}"
+                )
+        else:
+            original_filename = file.filename
+
         # 儲存檔案到 input 目錄
-        file_path = INPUT_DIR / file.filename
+        file_path = INPUT_DIR / original_filename
 
         # 如果檔案已存在，添加時間戳避免覆蓋
         if file_path.exists():
@@ -211,80 +236,175 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.get("/api/files", response_model=List[FileInfo])
 async def list_files():
-    """檔案列表"""
-    return files_db
+    """檔案列表 - 顯示 input/ 目錄中的實際檔案"""
+    try:
+        # 掃描 input/ 目錄的實際檔案
+        actual_files = []
+        file_counter = 1
+
+        if INPUT_DIR.exists():
+            for file_path in INPUT_DIR.iterdir():
+                # 只處理檔案，跳過目錄
+                if not file_path.is_file():
+                    continue
+
+                # 只顯示支援的檔案類型
+                if file_path.suffix.lower() not in ALLOWED_EXTENSIONS:
+                    continue
+
+                # 獲取檔案資訊
+                file_stat = file_path.stat()
+                file_size = file_stat.st_size
+                file_mtime = datetime.fromtimestamp(file_stat.st_mtime)
+
+                # 格式化檔案大小
+                if file_size < 1024:
+                    size_str = f"{file_size} B"
+                elif file_size < 1024 * 1024:
+                    size_str = f"{file_size / 1024:.1f} KB"
+                else:
+                    size_str = f"{file_size / 1024 / 1024:.1f} MB"
+
+                # 創建 FileInfo 物件
+                file_info = FileInfo(
+                    id=str(file_counter),
+                    name=file_path.name,
+                    size=size_str,
+                    status="ready",
+                    date=file_mtime.strftime("%Y-%m-%d")
+                )
+                actual_files.append(file_info)
+                file_counter += 1
+
+        # 按日期排序（最新的在前）
+        actual_files.sort(key=lambda f: f.date, reverse=True)
+
+        return actual_files
+
+    except Exception as e:
+        logging.error(f"List files error: {str(e)}")
+        # 發生錯誤時返回空列表，保持向後相容性
+        return []
 
 @app.delete("/api/files/{file_id}")
 async def delete_file(file_id: str):
-    """刪除檔案"""
-    global files_db
-    files_db = [f for f in files_db if f.id != file_id]
-    return {"message": "檔案刪除成功"}
+    """刪除檔案 - 從 input/ 目錄中刪除實際檔案"""
+    try:
+        # 獲取當前檔案列表以找到對應的檔案名稱
+        current_files = await list_files()
+        target_file = next((f for f in current_files if f.id == file_id), None)
+
+        if not target_file:
+            raise HTTPException(status_code=404, detail="找不到指定的檔案")
+
+        # 刪除實際檔案
+        file_path = INPUT_DIR / target_file.name
+        if file_path.exists():
+            file_path.unlink()
+            logging.info(f"Deleted file: {file_path}")
+
+        # 保持向後相容性 - 同時從記憶體資料庫中移除
+        global files_db
+        files_db = [f for f in files_db if f.id != file_id]
+
+        return {"message": "檔案刪除成功", "filename": target_file.name}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Delete file error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"檔案刪除失敗: {str(e)}")
 
 @app.get("/api/search/suggestions")
 async def get_search_suggestions():
     """獲取智能搜尋建議"""
+    # 預設建議（在沒有索引數據時使用）
+    default_suggestions = [
+        "總結文檔中的核心概念",
+        "提取關鍵實體間的關聯",
+        "分析知識圖譜的結構特徵",
+        "探索文檔的主要主題"
+    ]
+
+    # 如果服務未初始化，返回預設建議
     if graphrag_service is None:
-        raise HTTPException(status_code=500, detail="GraphRAG service not initialized")
+        logging.warning("GraphRAG service not initialized, returning default suggestions")
+        return {"suggestions": default_suggestions}
 
     try:
-        # 讀取實體數據生成建議
+        # 檢查 parquet adapter 是否存在
+        if graphrag_service.parquet_adapter is None:
+            logging.warning("Parquet adapter not initialized, returning default suggestions")
+            return {"suggestions": default_suggestions}
+
+        # 嘗試讀取實體數據生成建議
         entities_df = graphrag_service.parquet_adapter.read_entities()
-        
+
         # 獲取高頻實體作為搜尋建議
         suggestions = []
-        
+
         # 基於實體類型和重要性生成建議
         if not entities_df.empty:
             # 獲取前幾個重要實體
             top_entities = entities_df.head(10)
-            
+
             for _, entity in top_entities.iterrows():
                 entity_name = entity.get("title", entity.get("name", ""))
                 if entity_name and len(entity_name) > 2:
                     suggestions.append(f"分析 {entity_name} 的相關內容")
                     if len(suggestions) >= 4:
                         break
-        
+
         # 如果實體不足，添加通用建議
         while len(suggestions) < 4:
-            generic_suggestions = [
-                "總結文檔中的核心概念",
-                "提取關鍵實體間的關聯",
-                "分析知識圖譜的結構特徵",
-                "探索文檔的主要主題"
-            ]
-            for suggestion in generic_suggestions:
+            for suggestion in default_suggestions:
                 if suggestion not in suggestions:
                     suggestions.append(suggestion)
                     if len(suggestions) >= 4:
                         break
-        
+
         return {"suggestions": suggestions[:4]}
-        
+
+    except FileNotFoundError as e:
+        # Parquet 檔案不存在，返回預設建議
+        logging.warning(f"Parquet files not found: {str(e)}, returning default suggestions")
+        return {"suggestions": default_suggestions}
     except Exception as e:
-        logging.error(f"Search suggestions error: {str(e)}")
-        # 錯誤時返回默認建議
-        return {
-            "suggestions": [
-                "分析文檔中的核心技術論點",
-                "提取關鍵市場趨勢與數據指標", 
-                "總結實體間的語義關聯結構",
-                "驗證技術架構的邏輯完整性"
-            ]
-        }
+        # 其他錯誤也返回預設建議
+        logging.warning(f"Search suggestions error: {str(e)}, returning default suggestions")
+        return {"suggestions": default_suggestions}
 
 @app.get("/api/graph/data")
 async def get_graph_data():
     """獲取知識圖譜數據"""
+    # 空的圖譜結構（在沒有索引數據時使用）
+    empty_graph = {
+        "nodes": [],
+        "links": [],
+        "stats": {
+            "total_entities": 0,
+            "total_relationships": 0,
+            "total_communities": 0,
+            "displayed_nodes": 0,
+            "displayed_links": 0
+        }
+    }
+
+    # 如果服務未初始化，返回空圖譜
     if graphrag_service is None:
-        raise HTTPException(status_code=500, detail="GraphRAG service not initialized")
+        logging.warning("GraphRAG service not initialized, returning empty graph")
+        return empty_graph
 
     try:
-        # 讀取實體、關係和社群數據
+        # 檢查 parquet adapter 是否存在
+        if graphrag_service.parquet_adapter is None:
+            logging.warning("Parquet adapter not initialized, returning empty graph")
+            return empty_graph
+
+        # 嘗試讀取實體、關係和社群數據
         entities_df = graphrag_service.parquet_adapter.read_entities()
         relationships_df = graphrag_service.parquet_adapter.read_relationships()
-        
+
         # 嘗試讀取社群數據
         communities_df = None
         try:
@@ -292,7 +412,7 @@ async def get_graph_data():
         except Exception as e:
             logging.warning(f"Could not read communities data: {e}")
             communities_df = None
-        
+
         # 轉換為前端需要的格式
         nodes = []
         node_ids = set()
@@ -304,7 +424,7 @@ async def get_graph_data():
                 "val": min(int(entity.get("degree", 10)), 50)  # 節點大小
             })
             node_ids.add(node_id)
-        
+
         links = []
         for _, rel in relationships_df.head(30).iterrows():  # 限制連接數量
             source = rel.get("source", "")
@@ -315,7 +435,7 @@ async def get_graph_data():
                     "source": source,
                     "target": target
                 })
-        
+
         return {
             "nodes": nodes,
             "links": links,
@@ -327,23 +447,31 @@ async def get_graph_data():
                 "displayed_links": len(links)
             }
         }
+    except FileNotFoundError as e:
+        # Parquet 檔案不存在，返回空圖譜
+        logging.warning(f"Parquet files not found: {str(e)}, returning empty graph")
+        return empty_graph
     except Exception as e:
-        logging.error(f"Graph data error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to load graph data: {str(e)}")
+        # 其他錯誤也返回空圖譜而不是拋出異常
+        logging.warning(f"Graph data error: {str(e)}, returning empty graph")
+        return empty_graph
 
 @app.post("/api/indexing/start")
 async def start_indexing():
-    """開始索引"""
+    """開始索引 - 執行真實的 GraphRAG 索引處理"""
+    if indexing_state["is_indexing"]:
+        raise HTTPException(status_code=409, detail="索引已在進行中")
+
     indexing_state["is_indexing"] = True
     indexing_state["progress"] = 0
-    
-    # 模擬索引進度
-    asyncio.create_task(simulate_indexing())
-    
+
+    # 觸發真實的 GraphRAG 索引處理
+    asyncio.create_task(run_real_indexing())
+
     return IndexingStatus(
         is_indexing=True,
         progress=0,
-        message="索引開始"
+        message="索引開始 - 執行真實的 GraphRAG 處理"
     )
 
 @app.get("/api/indexing/status", response_model=IndexingStatus)
@@ -355,12 +483,105 @@ async def get_indexing_status():
         message="索引進行中" if indexing_state["is_indexing"] else "索引完成"
     )
 
-async def simulate_indexing():
-    """模擬索引進度"""
-    for i in range(0, 101, 2):
-        indexing_state["progress"] = i
-        await asyncio.sleep(0.1)
-    indexing_state["is_indexing"] = False
+async def run_real_indexing():
+    """執行真實的 GraphRAG 索引流程 - 處理所有 input 目錄中的檔案"""
+    try:
+        logging.info("Starting real GraphRAG indexing for all files in input directory")
+
+        # 切換到 backend 目錄執行索引
+        backend_dir = Path(__file__).parent
+
+        # 檢查 input 目錄中是否有檔案
+        input_files = list(INPUT_DIR.glob("*"))
+        input_files = [f for f in input_files if f.is_file() and f.suffix in ALLOWED_EXTENSIONS]
+
+        if not input_files:
+            logging.warning("No input files found for indexing")
+            indexing_state["is_indexing"] = False
+            indexing_state["progress"] = 0
+            return
+
+        logging.info(f"Found {len(input_files)} files to index: {[f.name for f in input_files]}")
+
+        # 使用 python -m graphrag.index 執行索引
+        cmd = [
+            sys.executable,
+            "-m",
+            "graphrag.index",
+            "--root",
+            str(backend_dir),
+            "--verbose"
+        ]
+
+        logging.info(f"Running command: {' '.join(cmd)}")
+
+        # 更新進度
+        indexing_state["progress"] = 10
+
+        # 執行索引命令
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(backend_dir)
+        )
+
+        indexing_state["progress"] = 30
+
+        # 監控進度
+        async def read_output(stream, is_stderr=False):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                line_text = line.decode().strip()
+                if line_text:
+                    if is_stderr:
+                        logging.error(f"GraphRAG stderr: {line_text}")
+                    else:
+                        logging.info(f"GraphRAG stdout: {line_text}")
+
+                    # 根據輸出更新進度
+                    if "completed" in line_text.lower() or "success" in line_text.lower():
+                        indexing_state["progress"] = min(indexing_state["progress"] + 5, 90)
+
+        # 同時讀取 stdout 和 stderr
+        await asyncio.gather(
+            read_output(process.stdout, False),
+            read_output(process.stderr, True)
+        )
+
+        # 等待進程完成
+        return_code = await process.wait()
+
+        if return_code == 0:
+            indexing_state["progress"] = 100
+            logging.info("GraphRAG indexing completed successfully")
+
+            # 重新初始化 GraphRAG 服務以載入新數據
+            global graphrag_service
+            try:
+                settings_path = os.getenv("GRAPHRAG_SETTINGS_PATH", str(backend_dir / "settings.yaml"))
+                data_dir = os.getenv("GRAPHRAG_DATA_DIR", str(backend_dir / "output"))
+
+                graphrag_service = GraphRagService(
+                    settings_path=settings_path,
+                    data_dir=data_dir
+                )
+                logging.info("GraphRAG service reinitialized with new data")
+            except Exception as e:
+                logging.error(f"Failed to reinitialize GraphRAG service: {str(e)}")
+
+        else:
+            logging.error(f"GraphRAG indexing failed with return code: {return_code}")
+            indexing_state["progress"] = 0
+
+    except Exception as e:
+        logging.error(f"Real indexing error: {str(e)}")
+        indexing_state["progress"] = 0
+
+    finally:
+        indexing_state["is_indexing"] = False
 
 async def trigger_indexing(file_path: Path):
     """觸發 GraphRAG 索引流程"""
