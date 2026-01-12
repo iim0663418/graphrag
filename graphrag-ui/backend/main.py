@@ -34,8 +34,8 @@ graphrag_service: Optional[GraphRagService] = None
 BACKEND_ROOT = Path(__file__).parent
 INPUT_DIR = BACKEND_ROOT / "input"
 OUTPUT_DIR = BACKEND_ROOT / "output"
-# GraphRAG 支援 .txt, .csv, .json 格式 (參考 graphrag/config/enums.py InputFileType)
-ALLOWED_EXTENSIONS = {".txt", ".csv", ".json", ".md"}
+# GraphRAG 支援 .txt, .csv, .md 格式 (參考 graphrag/config/enums.py InputFileType)
+ALLOWED_EXTENSIONS = {".txt", ".csv", ".md"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 # 確保目錄存在
@@ -465,8 +465,14 @@ async def start_indexing():
     indexing_state["is_indexing"] = True
     indexing_state["progress"] = 0
 
-    # 觸發真實的 GraphRAG 索引處理
-    asyncio.create_task(run_real_indexing())
+    # 立即啟動索引任務，不等待完成
+    try:
+        asyncio.create_task(run_real_indexing())
+        logging.info("GraphRAG indexing task created successfully")
+    except Exception as e:
+        logging.error(f"Failed to create indexing task: {str(e)}")
+        indexing_state["is_indexing"] = False
+        raise HTTPException(status_code=500, detail=f"無法啟動索引: {str(e)}")
 
     return IndexingStatus(
         is_indexing=True,
@@ -488,7 +494,8 @@ async def run_real_indexing():
     try:
         logging.info("Starting real GraphRAG indexing for all files in input directory")
 
-        # 切換到 backend 目錄執行索引
+        # 使用項目根目錄作為執行環境
+        project_root = Path(__file__).parent.parent.parent
         backend_dir = Path(__file__).parent
 
         # 檢查 input 目錄中是否有檔案
@@ -503,56 +510,50 @@ async def run_real_indexing():
 
         logging.info(f"Found {len(input_files)} files to index: {[f.name for f in input_files]}")
 
-        # 使用 python -m graphrag.index 執行索引
+        # 使用當前 Python 解釋器，從 graphrag 目錄執行
+        import shutil
+        python_executable = shutil.which('python') or sys.executable
+        
         cmd = [
-            sys.executable,
+            python_executable,
             "-m",
             "graphrag.index",
             "--root",
-            str(backend_dir),
-            "--verbose"
+            str(backend_dir)  # 使用絕對路徑確保正確的配置
         ]
 
-        logging.info(f"Running command: {' '.join(cmd)}")
+        # 不需要設置 PYTHONPATH，因為我們在正確的目錄執行
+
+        logging.info(f"Running command: {' '.join(cmd)} from {project_root}")
 
         # 更新進度
         indexing_state["progress"] = 10
 
-        # 執行索引命令
+        # 執行索引命令，從項目根目錄執行
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(backend_dir)
+            cwd=str(project_root)  # 從 graphrag 目錄執行
         )
 
         indexing_state["progress"] = 30
 
-        # 監控進度
-        async def read_output(stream, is_stderr=False):
-            while True:
-                line = await stream.readline()
-                if not line:
-                    break
-                line_text = line.decode().strip()
-                if line_text:
-                    if is_stderr:
-                        logging.error(f"GraphRAG stderr: {line_text}")
-                    else:
-                        logging.info(f"GraphRAG stdout: {line_text}")
+        # 簡化的進度監控 - 不阻塞等待
+        async def monitor_progress():
+            while process.returncode is None:
+                await asyncio.sleep(10)  # 每10秒更新一次進度
+                if indexing_state["progress"] < 90:
+                    indexing_state["progress"] += 5
 
-                    # 根據輸出更新進度
-                    if "completed" in line_text.lower() or "success" in line_text.lower():
-                        indexing_state["progress"] = min(indexing_state["progress"] + 5, 90)
-
-        # 同時讀取 stdout 和 stderr
-        await asyncio.gather(
-            read_output(process.stdout, False),
-            read_output(process.stderr, True)
-        )
+        # 啟動進度監控任務
+        monitor_task = asyncio.create_task(monitor_progress())
 
         # 等待進程完成
         return_code = await process.wait()
+        
+        # 取消進度監控
+        monitor_task.cancel()
 
         if return_code == 0:
             indexing_state["progress"] = 100
@@ -595,10 +596,11 @@ async def trigger_indexing(file_path: Path):
     try:
         logging.info(f"Starting GraphRAG indexing for file: {file_path}")
 
-        # 切換到 backend 目錄執行索引
+        # 使用項目根目錄作為執行環境
+        project_root = Path(__file__).parent.parent.parent
         backend_dir = Path(__file__).parent
 
-        # 使用 python -m graphrag.index 執行索引
+        # 使用 python -m graphrag.index 執行索引，從項目根目錄執行
         cmd = [
             sys.executable,
             "-m",
@@ -608,17 +610,17 @@ async def trigger_indexing(file_path: Path):
             "--verbose"
         ]
 
-        logging.info(f"Running command: {' '.join(cmd)}")
+        logging.info(f"Running command: {' '.join(cmd)} from {project_root}")
 
         # 更新進度
         indexing_state["progress"] = 10
 
-        # 執行索引命令
+        # 執行索引命令，從項目根目錄執行
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(backend_dir)
+            cwd=str(project_root)  # 關鍵修改：從項目根目錄執行
         )
 
         indexing_state["progress"] = 30

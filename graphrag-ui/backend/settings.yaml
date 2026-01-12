@@ -3,8 +3,11 @@ llm:
   api_base: http://localhost:1234/v1
   api_key: lm-studio
   model: qwen/qwen3-vl-8b
-  max_tokens: 1000
+  max_tokens: 1500
   temperature: 0.0
+  request_timeout: 1200.0
+  max_retries: 1
+  concurrent_requests: 1
 
 embeddings:
   llm:
@@ -12,16 +15,18 @@ embeddings:
     api_base: http://localhost:1234/v1
     api_key: lm-studio
     model: nomic-embed-text-v1.5
+    request_timeout: 300.0
+    max_retries: 2
 
 chunks:
-  size: 300
+  size: 250
   overlap: 50
 
 input:
   type: file
   file_type: text
   base_dir: input
-  file_pattern: ".*\\.txt$"
+  file_pattern: ".*\\.(txt|csv|md)$"
 
 cache:
   type: file
@@ -32,7 +37,7 @@ storage:
   base_dir: output
 
 entity_extraction:
-  max_gleanings: 1
+  max_gleanings: 0
 
 claim_extraction:
   enabled: false

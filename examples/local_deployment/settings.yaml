@@ -4,7 +4,7 @@ llm:
   api_key: lm-studio
   model: qwen/qwen3-vl-8b
   max_tokens: 1000
-  temperature: 0.0
+  temperature: 0.5
 
 embeddings:
   llm:
@@ -14,26 +14,26 @@ embeddings:
     model: nomic-embed-text-v1.5
 
 chunks:
-  size: 300
+  size: 250
   overlap: 50
 
 input:
   type: file
   file_type: text
-  base_dir: input
-  file_pattern: ".*\\.txt$"
+  base_dir: ../../graphrag-ui/backend/input
+  file_pattern: ".*\\.(txt|csv|md)$"
 
 cache:
   type: file
-  base_dir: cache
+  base_dir: ../../graphrag-ui/backend/cache
 
 storage:
   type: file
-  base_dir: output
+  base_dir: ../../graphrag-ui/backend/output
 
 entity_extraction:
   max_gleanings: 1
-  
+
 claim_extraction:
   enabled: false
 
@@ -42,3 +42,12 @@ community_reports:
 
 summarize_descriptions:
   enabled: false
+
+async:
+  num_threads: 1
+  concurrent_requests: 1
+  stagger: 3.0
+
+timeouts:
+  request: 1200
+  llm_request: 1200
