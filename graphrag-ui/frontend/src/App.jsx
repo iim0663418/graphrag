@@ -239,21 +239,45 @@ const SuccessToast = () => {
 };
 
 /**
- * --- 搜尋結果組件: 具備漸進式揭露功能 ---
+ * --- 搜尋結果組件: 具備漸進式揭露功能 (BDD Scenario 1) ---
  */
 const SearchResultCard = ({ result, query }) => {
   const [expanded, setExpanded] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
+  const [statistics, setStatistics] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   const highlight = (text) => {
     if (!query) return text;
     const parts = text.split(new RegExp(`(${query})`, 'gi'));
-    return parts.map((part, i) => 
-      part.toLowerCase() === query.toLowerCase() 
-        ? <mark key={i} className="bg-blue-100 text-blue-800 px-0.5 rounded-sm font-semibold">{part}</mark> 
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase()
+        ? <mark key={i} className="bg-blue-100 text-blue-800 px-0.5 rounded-sm font-semibold">{part}</mark>
         : part
     );
   };
+
+  // BDD Scenario 1: 載入真實統計數據替換靜態文本
+  useEffect(() => {
+    if (expanded && !statistics) {
+      setLoadingStats(true);
+      GraphRAGAPI.getStatistics()
+        .then(data => {
+          setStatistics(data);
+        })
+        .catch(err => {
+          console.error('載入統計數據失敗:', err);
+          // 使用默認值
+          setStatistics({
+            total_entities: 0,
+            total_relationships: 0,
+            entity_types: {},
+            avg_relationships_per_entity: 0
+          });
+        })
+        .finally(() => setLoadingStats(false));
+    }
+  }, [expanded, statistics]);
 
   return (
     <article className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group overflow-hidden">
@@ -268,7 +292,7 @@ const SearchResultCard = ({ result, query }) => {
             </span>
           </div>
           <div className="flex items-center space-x-3">
-            <button 
+            <button
               onClick={() => setBookmarked(!bookmarked)}
               className={`transition-all duration-300 ${bookmarked ? 'text-amber-500 scale-110' : 'text-slate-200 hover:text-amber-400'}`}
             >
@@ -279,7 +303,7 @@ const SearchResultCard = ({ result, query }) => {
             </span>
           </div>
         </div>
-        
+
         <h3 className="text-xl font-bold text-slate-900 mb-3 group-hover:text-blue-600 transition-colors tracking-tight">
           {highlight(result.title)}
         </h3>
@@ -288,11 +312,11 @@ const SearchResultCard = ({ result, query }) => {
         </p>
 
         <div className="flex justify-between items-center">
-          <button 
+          <button
             onClick={() => setExpanded(!expanded)}
             className="text-blue-600 text-xs font-black uppercase tracking-widest flex items-center hover:text-blue-700"
           >
-            {expanded ? '隱藏詳細內容' : '檢視深度脈絡'} 
+            {expanded ? '隱藏詳細內容' : '檢視深度脈絡'}
             <ChevronRight size={14} className={`ml-1.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
           </button>
           <div className="flex items-center space-x-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -305,9 +329,20 @@ const SearchResultCard = ({ result, query }) => {
         {expanded && (
           <div className="mt-6 pt-6 border-t border-slate-50 space-y-4 animate-in fade-in slide-in-from-top-2 duration-400">
             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-              <p className="text-sm text-slate-600 leading-relaxed font-medium italic">
-                「在特定語義環境中，此核心主題的關聯強度顯著。基於 GraphRAG 的多跳推理，系統識別出該點與地端資料庫中的其他 14 個實體存在結構化聯繫，這有助於理解跨文檔的邏輯一致性。」
-              </p>
+              {loadingStats ? (
+                <div className="flex items-center space-x-3 text-slate-400">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="text-sm font-medium">載入關聯分析數據...</span>
+                </div>
+              ) : statistics ? (
+                <p className="text-sm text-slate-600 leading-relaxed font-medium italic">
+                  「在特定語義環境中，此核心主題的關聯強度顯著。基於 GraphRAG 的多跳推理，系統識別出該點與地端資料庫中的其他 <span className="font-bold text-blue-600">{statistics.total_entities || 0} 個實體</span>存在結構化聯繫（共 <span className="font-bold text-blue-600">{statistics.total_relationships || 0} 條關係</span>），這有助於理解跨文檔的邏輯一致性。平均每個實體具有 <span className="font-bold text-blue-600">{statistics.avg_relationships_per_entity?.toFixed(1) || '0.0'}</span> 個關聯連接。」
+                </p>
+              ) : (
+                <p className="text-sm text-slate-600 leading-relaxed font-medium italic">
+                  「在特定語義環境中，此核心主題的關聯強度顯著。基於 GraphRAG 的多跳推理，系統正在建立實體間的結構化聯繫，這有助於理解跨文檔的邏輯一致性。」
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {['語義推理', '實體對齊', '地端 LLM'].map(t => (
@@ -318,6 +353,560 @@ const SearchResultCard = ({ result, query }) => {
         )}
       </div>
     </article>
+  );
+};
+
+/**
+ * --- 社群分析面板組件 (BDD Scenario 2 & 3) ---
+ */
+const CommunityAnalysisPanel = () => {
+  const [communities, setCommunities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedCommunity, setSelectedCommunity] = useState(null);
+
+  useEffect(() => {
+    const loadCommunities = async () => {
+      try {
+        setLoading(true);
+        const data = await GraphRAGAPI.getCommunities();
+        setCommunities(data.communities || []);
+        setError(null);
+      } catch (err) {
+        console.error('載入社群數據失敗:', err);
+        setError(err.message);
+        setCommunities([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCommunities();
+  }, []);
+
+  // BDD Scenario 3: 探索社群功能 - 顯示社群詳細信息模態框
+  const handleExploreCommunity = (community) => {
+    setSelectedCommunity(community);
+  };
+
+  const closeCommunityModal = () => {
+    setSelectedCommunity(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <div className="flex items-center space-x-3 text-slate-400">
+          <Loader2 size={20} className="animate-spin" />
+          <span className="font-bold">載入社群分析數據...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <div className="flex items-center space-x-3 text-amber-600">
+          <AlertCircle size={20} />
+          <span className="font-bold">社群數據載入失敗: {error}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (communities.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+        <div className="text-slate-400">
+          <Layers size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="font-bold text-sm">尚無社群分析數據</p>
+          <p className="text-xs mt-2 opacity-70">請先完成知識圖譜索引構建</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-6 border-b border-slate-200">
+          <div className="flex items-center space-x-3">
+            <Network size={24} className="text-blue-600" />
+            <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">社群分析面板</h3>
+          </div>
+          <p className="text-xs text-slate-500 font-bold mt-2 tracking-wide">基於圖譜拓撲結構的社群檢測與摘要</p>
+        </div>
+
+        <div className="p-8 space-y-6">
+          {communities.slice(0, 3).map((community, index) => (
+            <div key={community.id || index} className="border border-slate-100 rounded-xl p-6 hover:border-blue-200 hover:shadow-md transition-all group">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg">
+                    #{community.rank || index + 1}
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 text-lg tracking-tight">{community.title}</h4>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      社群 ID: {community.id}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-blue-600">{community.entity_count || 0}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">實體數量</div>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 leading-relaxed mb-4 font-medium">
+                {community.summary}
+              </p>
+
+              <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                <div className="flex items-center space-x-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <span className="flex items-center">
+                    <Star size={12} className="mr-1.5 text-amber-400" fill="currentColor" />
+                    排名 {community.rank || index + 1}
+                  </span>
+                  <span className="flex items-center">
+                    <Activity size={12} className="mr-1.5 text-blue-400" />
+                    活躍度 {community.activity || 'N/A'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleExploreCommunity(community)}
+                  className="text-blue-600 text-[10px] font-black uppercase tracking-widest hover:text-blue-700 flex items-center group-hover:translate-x-1 transition-transform"
+                >
+                  探索社群 <ChevronRight size={12} className="ml-1" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* BDD Scenario 3: 社群詳細信息模態框 */}
+      {selectedCommunity && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-in fade-in duration-200" onClick={closeCommunityModal}>
+          <div className="bg-white rounded-[48px] max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-8 duration-300" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-12 py-8 border-b border-slate-200 rounded-t-[48px] z-10">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-xl">
+                    #{selectedCommunity.rank || 1}
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">{selectedCommunity.title}</h2>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">社群 ID: {selectedCommunity.id}</span>
+                  </div>
+                </div>
+                <button onClick={closeCommunityModal} className="text-slate-400 hover:text-slate-900 transition-colors p-2">
+                  <ChevronRight size={32} className="rotate-90" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-12 space-y-8">
+              {/* 社群統計 */}
+              <div className="grid grid-cols-3 gap-6">
+                <div className="bg-blue-50 rounded-2xl p-6 border border-blue-100">
+                  <div className="text-4xl font-black text-blue-600 mb-2">{selectedCommunity.entity_count || 0}</div>
+                  <div className="text-xs font-black text-slate-500 uppercase tracking-wider">實體數量</div>
+                </div>
+                <div className="bg-indigo-50 rounded-2xl p-6 border border-indigo-100">
+                  <div className="text-4xl font-black text-indigo-600 mb-2">{selectedCommunity.activity || 'N/A'}</div>
+                  <div className="text-xs font-black text-slate-500 uppercase tracking-wider">活躍度指標</div>
+                </div>
+                <div className="bg-violet-50 rounded-2xl p-6 border border-violet-100">
+                  <div className="text-4xl font-black text-violet-600 mb-2">{selectedCommunity.rank?.toFixed(1) || '0.0'}</div>
+                  <div className="text-xs font-black text-slate-500 uppercase tracking-wider">重要性評分</div>
+                </div>
+              </div>
+
+              {/* 社群摘要 */}
+              <div className="bg-slate-50 rounded-2xl p-8 border border-slate-100">
+                <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-4 flex items-center">
+                  <Info size={16} className="mr-2 text-blue-600" /> 社群摘要
+                </h3>
+                <p className="text-slate-600 leading-relaxed font-medium">{selectedCommunity.summary}</p>
+              </div>
+
+              {/* 詳細內容 */}
+              {selectedCommunity.full_content && (
+                <div className="bg-white rounded-2xl p-8 border border-slate-200">
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-4 flex items-center">
+                    <FileText size={16} className="mr-2 text-indigo-600" /> 詳細分析
+                  </h3>
+                  <p className="text-slate-600 leading-relaxed text-sm font-medium whitespace-pre-wrap">{selectedCommunity.full_content}</p>
+                </div>
+              )}
+
+              {/* 關鍵發現 */}
+              {selectedCommunity.findings && selectedCommunity.findings.length > 0 && (
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-8 border border-amber-100">
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-4 flex items-center">
+                    <Lightbulb size={16} className="mr-2 text-amber-600" /> 關鍵發現
+                  </h3>
+                  <ul className="space-y-3">
+                    {selectedCommunity.findings.map((finding, idx) => (
+                      <li key={idx} className="flex items-start space-x-3">
+                        <div className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-black mt-0.5 flex-shrink-0">
+                          {idx + 1}
+                        </div>
+                        <span className="text-slate-600 font-medium text-sm leading-relaxed">{typeof finding === 'string' ? finding : finding.summary || ''}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 排名說明 */}
+              {selectedCommunity.rank_explanation && (
+                <div className="bg-blue-50 rounded-2xl p-8 border border-blue-100">
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-4 flex items-center">
+                    <Star size={16} className="mr-2 text-blue-600" /> 排名說明
+                  </h3>
+                  <p className="text-slate-600 leading-relaxed text-sm font-medium">{selectedCommunity.rank_explanation}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-slate-50 px-12 py-6 border-t border-slate-200 rounded-b-[48px] flex justify-end">
+              <button
+                onClick={closeCommunityModal}
+                className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black hover:bg-black transition-all uppercase tracking-widest text-sm"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+/**
+ * --- 完整統計數據展示組件 (BDD Scenario 3) ---
+ */
+const StatisticsPanel = () => {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        setLoading(true);
+        const data = await GraphRAGAPI.getStatistics();
+        setStats(data);
+        setError(null);
+      } catch (err) {
+        console.error('載入統計數據失敗:', err);
+        setError(err.message);
+        setStats(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStats();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <div className="flex items-center space-x-3 text-slate-400">
+          <Loader2 size={20} className="animate-spin" />
+          <span className="font-bold">載入統計數據...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !stats) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <div className="flex items-center space-x-3 text-amber-600">
+          <AlertCircle size={20} />
+          <span className="font-bold">統計數據載入失敗</span>
+        </div>
+      </div>
+    );
+  }
+
+  // BDD Scenario 1: 修正數據映射以匹配 API 嵌套結構
+  const totalEntities = stats.entities?.total || 0;
+  const totalRelationships = stats.relationships?.total || 0;
+  const totalCommunities = stats.communities?.total || 0;
+  const avgRelationships = totalEntities > 0 ? (totalRelationships / totalEntities) : 0;
+
+  const statItems = [
+    { label: '實體總數', value: totalEntities, icon: <Database size={20} />, color: 'blue' },
+    { label: '關係總數', value: totalRelationships, icon: <Share2 size={20} />, color: 'indigo' },
+    { label: '平均關聯度', value: avgRelationships.toFixed(2), icon: <Activity size={20} />, color: 'violet' },
+    { label: '圖密度', value: stats.graph_density?.toFixed(4) || '0.0000', icon: <Network size={20} />, color: 'purple' },
+    { label: '最大連接度', value: stats.max_degree || 0, icon: <Target size={20} />, color: 'pink' },
+    { label: '社群數量', value: totalCommunities, icon: <Layers size={20} />, color: 'rose' }
+  ];
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-gradient-to-r from-slate-50 to-blue-50 px-8 py-6 border-b border-slate-200">
+        <div className="flex items-center space-x-3">
+          <Cpu size={24} className="text-slate-700" />
+          <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">完整統計數據</h3>
+        </div>
+        <p className="text-xs text-slate-500 font-bold mt-2 tracking-wide">知識圖譜結構化分析指標</p>
+      </div>
+
+      <div className="p-8 grid grid-cols-2 md:grid-cols-3 gap-6">
+        {statItems.map((item, index) => (
+          <div key={index} className="border border-slate-100 rounded-xl p-6 hover:border-blue-200 hover:shadow-md transition-all group">
+            <div className={`w-12 h-12 rounded-lg bg-${item.color}-50 flex items-center justify-center text-${item.color}-600 mb-4 group-hover:scale-110 transition-transform`}>
+              {item.icon}
+            </div>
+            <div className="text-3xl font-black text-slate-900 mb-2 tracking-tight">{item.value}</div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {stats.entity_types && Object.keys(stats.entity_types).length > 0 && (
+        <div className="px-8 pb-8">
+          <h4 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-4">實體類型分布</h4>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(stats.entity_types).map(([type, count]) => (
+              <span key={type} className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-4 py-2 rounded-lg font-bold">
+                {type}: <span className="font-black text-blue-600">{count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * --- 實體類型分布圖表組件 (BDD Scenario 4) ---
+ */
+const EntityTypeDistribution = () => {
+  const [entityTypes, setEntityTypes] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadEntityTypes = async () => {
+      try {
+        setLoading(true);
+        const data = await GraphRAGAPI.getEntityTypes();
+        setEntityTypes(data);
+        setError(null);
+      } catch (err) {
+        console.error('載入實體類型失敗:', err);
+        setError(err.message);
+        setEntityTypes(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadEntityTypes();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <div className="flex items-center space-x-3 text-slate-400">
+          <Loader2 size={20} className="animate-spin" />
+          <span className="font-bold">載入實體類型數據...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !entityTypes) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+        <div className="text-slate-400">
+          <Layers size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="font-bold text-sm">請先完成知識圖譜索引構建</p>
+        </div>
+      </div>
+    );
+  }
+
+  const types = entityTypes.types || [];
+  const total = types.reduce((sum, t) => sum + t.count, 0);
+
+  const colors = ['bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-pink-500'];
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-gradient-to-r from-violet-50 to-purple-50 px-8 py-6 border-b border-slate-200">
+        <div className="flex items-center space-x-3">
+          <Layers size={24} className="text-violet-600" />
+          <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">實體類型分布</h3>
+        </div>
+        <p className="text-xs text-slate-500 font-bold mt-2 tracking-wide">按實體類別統計分析</p>
+      </div>
+
+      <div className="p-8">
+        {types.length === 0 ? (
+          <div className="text-center text-slate-400 py-12">
+            <Database size={48} className="mx-auto mb-4 opacity-20" />
+            <p className="font-bold text-sm">請先完成知識圖譜索引構建</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* 條形圖 */}
+            <div className="space-y-4">
+              {types.map((type, index) => {
+                const percentage = total > 0 ? (type.count / total * 100) : 0;
+                return (
+                  <div key={type.name} className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-black text-slate-700 uppercase tracking-wide">{type.name}</span>
+                      <span className="text-sm font-black text-slate-900">
+                        {type.count} <span className="text-xs text-slate-400">({percentage.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-4 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
+                      <div
+                        className={`h-full ${colors[index % colors.length]} transition-all duration-500 rounded-full`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 統計摘要 */}
+            <div className="mt-8 pt-6 border-t border-slate-100">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-black text-blue-600">{types.length}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-1">類型總數</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-indigo-600">{total}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-1">實體總數</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-violet-600">{types.length > 0 ? (total / types.length).toFixed(0) : 0}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-1">平均數量</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * --- 關係權重排行組件 (BDD Scenario 5) ---
+ */
+const RelationshipWeightRanking = () => {
+  const [relationships, setRelationships] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadRelationships = async () => {
+      try {
+        setLoading(true);
+        const data = await GraphRAGAPI.getTopRelationships();
+        setRelationships(data.relationships || []);
+        setError(null);
+      } catch (err) {
+        console.error('載入關係排行失敗:', err);
+        setError(err.message);
+        setRelationships([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRelationships();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <div className="flex items-center space-x-3 text-slate-400">
+          <Loader2 size={20} className="animate-spin" />
+          <span className="font-bold">載入關係權重數據...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || relationships.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+        <div className="text-slate-400">
+          <Share2 size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="font-bold text-sm">請先完成知識圖譜索引構建</p>
+        </div>
+      </div>
+    );
+  }
+
+  const maxWeight = Math.max(...relationships.map(r => r.weight || 0));
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 px-8 py-6 border-b border-slate-200">
+        <div className="flex items-center space-x-3">
+          <Share2 size={24} className="text-emerald-600" />
+          <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">關係權重排行</h3>
+        </div>
+        <p className="text-xs text-slate-500 font-bold mt-2 tracking-wide">前 10 個最重要的實體關聯</p>
+      </div>
+
+      <div className="p-8">
+        <div className="space-y-4">
+          {relationships.slice(0, 10).map((rel, index) => {
+            const percentage = maxWeight > 0 ? (rel.weight / maxWeight * 100) : 0;
+            const medalColors = ['text-amber-500', 'text-slate-400', 'text-orange-600'];
+
+            return (
+              <div key={index} className="border border-slate-100 rounded-xl p-5 hover:border-emerald-200 hover:shadow-md transition-all group">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start space-x-4 flex-1">
+                    <div className={`text-2xl font-black ${index < 3 ? medalColors[index] : 'text-slate-300'}`}>
+                      {index < 3 ? '★' : `#${index + 1}`}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-black text-slate-900 text-sm mb-1 tracking-tight">
+                        {rel.source} <ChevronRight size={14} className="inline text-slate-400" /> {rel.target}
+                      </div>
+                      <div className="text-xs text-slate-500 font-medium">{rel.description}</div>
+                    </div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className="text-xl font-black text-emerald-600">{rel.weight?.toFixed(1) || '0.0'}</div>
+                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">權重</div>
+                  </div>
+                </div>
+
+                <div className="h-2 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all duration-500 rounded-full"
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -770,6 +1359,8 @@ const KnowledgeTopology = () => {
   const [dimensions, setDimensions] = useState({ width: 0, height: 600 });
   const [graphData, setGraphData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [nodeAnalysis, setNodeAnalysis] = useState(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
   useLayoutEffect(() => {
     const observer = new ResizeObserver(entries => {
@@ -780,32 +1371,40 @@ const KnowledgeTopology = () => {
     return () => observer.disconnect();
   }, []);
 
-  // 載入真實的圖譜數據
+  // BDD Scenario 3: 載入真實的圖譜拓撲數據並優化空狀態顯示
   useEffect(() => {
     const loadGraphData = async () => {
       try {
         setLoading(true);
-        const data = await GraphRAGAPI.getGraphData();
-        setGraphData(data);
+        const data = await GraphRAGAPI.getGraphTopology();
+
+        // 檢查是否有真實數據
+        if (data.nodes && data.nodes.length > 0) {
+          setGraphData(data);
+        } else {
+          // 無數據時設置為 null，顯示專業的空狀態界面
+          setGraphData({
+            nodes: [],
+            links: [],
+            stats: {
+              total_entities: 0,
+              displayed_nodes: 0,
+              isEmpty: true,
+              message: '請先完成知識圖譜索引構建'
+            }
+          });
+        }
       } catch (err) {
         console.error('載入圖譜數據失敗:', err);
-        // 載入失敗時顯示有意義的空狀態提示
+        // 載入失敗時設置為空狀態
         setGraphData({
-          nodes: [
-            { id: '請先上傳檔案', group: 1, val: 40 },
-            { id: '執行索引構建', group: 2, val: 35 },
-            { id: '即可生成知識圖譜', group: 3, val: 30 }
-          ],
-          links: [
-            { source: '請先上傳檔案', target: '執行索引構建' },
-            { source: '執行索引構建', target: '即可生成知識圖譜' }
-          ],
+          nodes: [],
+          links: [],
           stats: {
             total_entities: 0,
-            total_relationships: 0,
             displayed_nodes: 0,
             isEmpty: true,
-            message: '尚未建立知識圖譜索引'
+            message: '請先完成知識圖譜索引構建'
           }
         });
       } finally {
@@ -815,6 +1414,34 @@ const KnowledgeTopology = () => {
 
     loadGraphData();
   }, []);
+
+  // BDD Scenario 4: 當選擇節點時，載入動態語義分析數據
+  useEffect(() => {
+    if (selectedNode && !graphData?.stats?.isEmpty) {
+      const loadNodeAnalysis = async () => {
+        try {
+          setLoadingAnalysis(true);
+          const analysis = await GraphRAGAPI.getEntityAnalysis(selectedNode.id);
+          setNodeAnalysis(analysis);
+        } catch (err) {
+          console.error('載入節點分析失敗:', err);
+          // 如果 API 失敗，使用基本信息
+          setNodeAnalysis({
+            entity_id: selectedNode.id,
+            centrality_score: selectedNode.val || 0,
+            total_relationships: 0,
+            semantic_description: `該實體節點「${selectedNode.id}」在知識圖譜中具有 ${selectedNode.val || 0} 個連接。基於圖譜拓撲分析，該節點參與多個語義關聯，對知識網絡的結構具有一定影響力。`
+          });
+        } finally {
+          setLoadingAnalysis(false);
+        }
+      };
+
+      loadNodeAnalysis();
+    } else {
+      setNodeAnalysis(null);
+    }
+  }, [selectedNode, graphData]);
 
   useEffect(() => {
     if (!svgRef.current || dimensions.width === 0 || !graphData) return;
@@ -855,20 +1482,42 @@ const KnowledgeTopology = () => {
   return (
     <div className="flex h-[660px] space-x-12">
       <div ref={containerRef} className="flex-1 bg-white rounded-[60px] border border-slate-100 shadow-2xl relative overflow-hidden">
-        <svg ref={svgRef} className="w-full h-full" />
-        <div className="absolute top-10 left-10 bg-slate-900 text-white px-6 py-2.5 rounded-[20px] text-[10px] font-black uppercase tracking-[0.25em] shadow-2xl flex items-center border border-slate-700">
-          <Activity size={14} className="mr-3 text-emerald-400 animate-pulse" />
-          {loading ? 'Loading Graph Data...' : (graphData?.stats?.isEmpty ? '等待知識圖譜數據' : 'Knowledge Topology Network')}
-        </div>
-        {graphData?.stats && !graphData.stats.isEmpty && (
-          <div className="absolute top-20 left-10 bg-blue-600 text-white px-4 py-2 rounded-[16px] text-[9px] font-black uppercase tracking-wider shadow-lg">
-            {graphData.stats.displayed_nodes} / {graphData.stats.total_entities} Entities
+        {graphData?.stats?.isEmpty ? (
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-16">
+            <div className="w-32 h-32 bg-slate-50 rounded-full flex items-center justify-center mb-8 border border-slate-100 shadow-inner">
+              <Network size={64} className="text-slate-300" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">知識圖譜網絡視覺化</h3>
+            <p className="text-sm text-slate-500 font-bold max-w-md mb-8 leading-relaxed">
+              完成索引構建後，此處將顯示實體關聯網絡的拓撲結構。您可以通過視覺化方式探索知識圖譜中的實體和關係。
+            </p>
+            <div className="bg-blue-50 border border-blue-100 rounded-2xl px-6 py-4 text-left">
+              <div className="flex items-start space-x-3">
+                <Lightbulb size={20} className="text-blue-600 mt-0.5" />
+                <div>
+                  <p className="text-xs font-black text-blue-900 uppercase tracking-wider mb-2">操作步驟</p>
+                  <ol className="text-xs text-slate-600 space-y-1 font-bold">
+                    <li>1. 前往「文檔匯入」上傳文件</li>
+                    <li>2. 前往「索引中心」執行索引構建</li>
+                    <li>3. 返回此頁面查看圖譜視覺化</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
           </div>
-        )}
-        {graphData?.stats?.isEmpty && (
-          <div className="absolute top-20 left-10 bg-amber-500 text-white px-4 py-2 rounded-[16px] text-[9px] font-black uppercase tracking-wider shadow-lg">
-            {graphData.stats.message}
-          </div>
+        ) : (
+          <>
+            <svg ref={svgRef} className="w-full h-full" />
+            <div className="absolute top-10 left-10 bg-slate-900 text-white px-6 py-2.5 rounded-[20px] text-[10px] font-black uppercase tracking-[0.25em] shadow-2xl flex items-center border border-slate-700">
+              <Activity size={14} className="mr-3 text-emerald-400 animate-pulse" />
+              {loading ? 'Loading Graph Data...' : 'Knowledge Topology Network'}
+            </div>
+            {graphData?.stats && !graphData.stats.isEmpty && (
+              <div className="absolute top-20 left-10 bg-blue-600 text-white px-4 py-2 rounded-[16px] text-[9px] font-black uppercase tracking-wider shadow-lg">
+                {graphData.stats.displayed_nodes} / {graphData.stats.total_entities} Entities
+              </div>
+            )}
+          </>
         )}
       </div>
       <div className="w-[420px] bg-white rounded-[60px] border border-slate-100 shadow-2xl p-12 overflow-y-auto">
@@ -882,27 +1531,97 @@ const KnowledgeTopology = () => {
               </label>
               <div className="text-4xl font-black tracking-tighter">{selectedNode.id}</div>
             </div>
-            <div className="space-y-6">
-              <div className="flex items-center space-x-3 text-blue-600">
-                {graphData?.stats?.isEmpty ? <Lightbulb size={18} /> : <Network size={18} />}
-                <label className="text-[10px] uppercase font-black tracking-[0.2em]">
-                  {graphData?.stats?.isEmpty ? '使用說明' : '語義架構影響因子'}
-                </label>
+
+            {/* BDD Scenario 4: 顯示動態節點語義描述 */}
+            {loadingAnalysis ? (
+              <div className="flex items-center space-x-3 text-slate-400">
+                <Loader2 size={18} className="animate-spin" />
+                <span className="text-xs font-bold">載入節點分析...</span>
               </div>
-              <p className="text-sm text-slate-500 leading-relaxed font-bold tracking-tight opacity-80">
-                {graphData?.stats?.isEmpty
-                  ? '知識圖譜需要先完成資料索引才能顯示。請前往「文檔匯入」頁面上傳您的文件，然後在「索引中心」執行索引構建流程。索引完成後，這裡將顯示完整的實體關聯網絡圖譜。'
-                  : '該核心實體節點直接決定了地端知識庫的跨區域一致性。透過語義嵌入空間的深度分析，系統確定其為目前知識網格中的主導聚合點，具備高中心性指標。'}
-              </p>
-            </div>
+            ) : nodeAnalysis ? (
+              <div className="space-y-6">
+                {/* 節點統計指標 */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <div className="text-2xl font-black text-blue-600 mb-1">{nodeAnalysis.centrality_score || 0}</div>
+                    <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider">連接數</div>
+                  </div>
+                  <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                    <div className="text-2xl font-black text-indigo-600 mb-1">{nodeAnalysis.normalized_centrality || 0}</div>
+                    <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider">中心性</div>
+                  </div>
+                </div>
+
+                {/* 節點類型 */}
+                {nodeAnalysis.entity_type && (
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                    <label className="text-[9px] uppercase text-slate-500 font-black tracking-wider mb-2 block">實體類型</label>
+                    <div className="text-sm font-black text-slate-900">{nodeAnalysis.entity_type}</div>
+                  </div>
+                )}
+
+                {/* 動態語義描述 */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3 text-blue-600">
+                    <Network size={18} />
+                    <label className="text-[10px] uppercase font-black tracking-[0.2em]">語義架構分析</label>
+                  </div>
+                  <p className="text-sm text-slate-600 leading-relaxed font-medium tracking-tight">
+                    {nodeAnalysis.semantic_description || `該實體節點「${selectedNode.id}」在知識圖譜中具有重要地位。`}
+                  </p>
+                </div>
+
+                {/* 影響因子 */}
+                {nodeAnalysis.influence_factors && nodeAnalysis.influence_factors.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3 text-indigo-600">
+                      <Activity size={18} />
+                      <label className="text-[10px] uppercase font-black tracking-[0.2em]">關聯實體</label>
+                    </div>
+                    <div className="space-y-2">
+                      {nodeAnalysis.influence_factors.slice(0, 3).map((factor, idx) => (
+                        <div key={idx} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                          <div className="text-xs font-black text-slate-900 mb-1">{factor.related_entity}</div>
+                          {factor.description && (
+                            <div className="text-[10px] text-slate-500 font-medium">{factor.description}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 詳細分析 */}
+                {nodeAnalysis.analysis && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+                    <label className="text-[9px] uppercase text-slate-500 font-black tracking-wider mb-2 block">圖論分析</label>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">{nodeAnalysis.analysis}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex items-center space-x-3 text-blue-600">
+                  {graphData?.stats?.isEmpty ? <Lightbulb size={18} /> : <Network size={18} />}
+                  <label className="text-[10px] uppercase font-black tracking-[0.2em]">
+                    {graphData?.stats?.isEmpty ? '使用說明' : '語義架構影響因子'}
+                  </label>
+                </div>
+                <p className="text-sm text-slate-500 leading-relaxed font-bold tracking-tight opacity-80">
+                  {graphData?.stats?.isEmpty
+                    ? '知識圖譜需要先完成資料索引才能顯示。請前往「文檔匯入」頁面上傳您的文件，然後在「索引中心」執行索引構建流程。索引完成後，這裡將顯示完整的實體關聯網絡圖譜。'
+                    : `該實體節點「${selectedNode.id}」在知識圖譜中具有 ${selectedNode.val || 0} 個連接。正在分析其語義特徵...`}
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center text-slate-200">
             <div className="w-24 h-24 bg-slate-50 rounded-[32px] flex items-center justify-center mb-8 border border-slate-100 shadow-inner"><Share2 size={48} /></div>
             <p className="font-black text-xs uppercase tracking-[0.4em] leading-loose text-slate-300">
               {graphData?.stats?.isEmpty
-                ? '請先上傳文件並完成索引<br/>以建立知識圖譜網絡'
-                : '請在視窗中選取節點<br/>以分析核心脈絡關係'}
+                ? '請先完成知識圖譜索引構建'
+                : '請在視窗中選取節點\n以分析核心脈絡關係'}
             </p>
           </div>
         )}
@@ -1053,8 +1772,21 @@ export default function App() {
           {activeTab === 'indexing' && <IndexingDashboard />}
           {activeTab === 'search' && <SearchInterface />}
           {activeTab === 'graph' && (
-            <div className="animate-in fade-in zoom-in-95 duration-700">
+            <div className="animate-in fade-in zoom-in-95 duration-700 space-y-12">
+              {/* 知識圖譜視覺化 */}
               <KnowledgeTopology />
+
+              {/* 社群分析面板 (BDD Scenario 2) */}
+              <CommunityAnalysisPanel />
+
+              {/* 完整統計數據 (BDD Scenario 3) */}
+              <StatisticsPanel />
+
+              {/* 實體類型分布與關係權重排行 (BDD Scenarios 4 & 5) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <EntityTypeDistribution />
+                <RelationshipWeightRanking />
+              </div>
             </div>
           )}
         </section>

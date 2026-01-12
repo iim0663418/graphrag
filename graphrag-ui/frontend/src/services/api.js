@@ -145,12 +145,78 @@ class GraphRAGAPI {
     return response.json();
   }
 
+  // 獲取實體語義分析
+  static async getEntityAnalysis(entityId) {
+    const response = await fetch(`${API_BASE_URL}/api/entity/${encodeURIComponent(entityId)}/analysis`);
+
+    if (!response.ok) {
+      throw new Error(`獲取實體分析失敗: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // BDD Scenario 1: 獲取社群分析數據
+  static async getCommunities() {
+    const response = await fetch(`${API_BASE_URL}/api/communities`);
+
+    if (!response.ok) {
+      throw new Error(`獲取社群數據失敗: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // BDD Scenario 2: 獲取完整統計數據
+  static async getStatistics() {
+    const response = await fetch(`${API_BASE_URL}/api/statistics`);
+
+    if (!response.ok) {
+      throw new Error(`獲取統計數據失敗: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // BDD Scenario 3: 獲取實體類型分布
+  static async getEntityTypes() {
+    const response = await fetch(`${API_BASE_URL}/api/entity-types`);
+
+    if (!response.ok) {
+      throw new Error(`獲取實體類型失敗: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // BDD Scenario 5: 獲取關係權重排行
+  static async getTopRelationships() {
+    const response = await fetch(`${API_BASE_URL}/api/relationships/top`);
+
+    if (!response.ok) {
+      throw new Error(`獲取關係排行失敗: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // BDD Scenario: 獲取知識圖譜拓撲數據
+  static async getGraphTopology() {
+    const response = await fetch(`${API_BASE_URL}/api/graph-topology`);
+
+    if (!response.ok) {
+      throw new Error(`獲取圖譜拓撲失敗: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
   // 健康檢查
   static async healthCheck() {
     try {
-      const response = await fetch(`${API_BASE_URL}/`, { 
+      const response = await fetch(`${API_BASE_URL}/`, {
         method: 'GET',
-        timeout: 5000 
+        timeout: 5000
       });
       return response.ok;
     } catch (error) {
