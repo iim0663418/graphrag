@@ -55,7 +55,9 @@ class BaseLLM(ABC, LLM[TIn, TOut], Generic[TIn, TOut]):
         except Exception as e:
             stack_trace = traceback.format_exc()
             if self._on_error:
-                self._on_error(e, stack_trace, {"input": input})
+                # 截斷過長的 input 避免日誌爆炸，保留原始格式
+                safe_input = str(input)[:500] + "..." if len(str(input)) > 500 else str(input)
+                self._on_error(e, stack_trace, {"input": safe_input})
             raise
 
     async def _invoke_json(

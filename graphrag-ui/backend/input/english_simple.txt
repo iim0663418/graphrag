@@ -1,0 +1,7 @@
+Microsoft GraphRAG is a powerful knowledge graph construction tool. It uses large language models to extract entities and relationships from unstructured text.
+
+The system works by chunking documents and using LLMs to identify entities like people, organizations, and locations. It also extracts relationships between these entities.
+
+GraphRAG can be integrated with local models using LMStudio, providing a cost-effective alternative to cloud APIs. This allows organizations to process sensitive data locally while maintaining privacy.
+
+The indexing process creates multiple output files including parquet files that store the extracted knowledge graph data.

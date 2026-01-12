@@ -1,0 +1,10 @@
+{
+  "total_runtime": "18 minutes",
+  "num_documents": 1,
+  "input_text_units": 25,
+  "final_entities": 75,
+  "final_nodes": 150,
+  "final_communities": 21,
+  "final_relationships": 112,
+  "status": "completed"
+}

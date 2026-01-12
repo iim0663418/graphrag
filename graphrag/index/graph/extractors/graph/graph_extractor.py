@@ -87,6 +87,7 @@ class GraphExtractor:
         self._on_error = on_error or (lambda _e, _s, _d: None)
 
         # Construct the looping arguments
+        # 簡化處理：對於 Qwen 模型使用相同的邏輯但調整參數
         encoding = tiktoken.get_encoding(encoding_model or "cl100k_base")
         yes = encoding.encode("YES")
         no = encoding.encode("NO")
@@ -156,6 +157,10 @@ class GraphExtractor:
             },
         )
         results = response.output or ""
+
+        # 檢查初始回應質量，避免無效的 gleaning
+        if len(results.strip()) < 10:  # 太短的回應直接跳過 gleaning
+            return results
 
         # Repeat to ensure we maximize entity count
         for i in range(self._max_gleanings):

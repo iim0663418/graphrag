@@ -48,5 +48,6 @@
     },
     "custom": true, // Enable the `custom` dictionary
     "internal-terms": true // Disable the `internal-terms` dictionary
-  }
+  },
+  "git.ignoreLimitWarning": true
 }

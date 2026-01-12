@@ -6,6 +6,7 @@
 import logging
 
 import tiktoken
+from .qwen_tokenizer import num_tokens_from_string_qwen
 
 DEFAULT_ENCODING_NAME = "cl100k_base"
 log = logging.getLogger(__name__)
@@ -15,6 +16,11 @@ def num_tokens_from_string(
     string: str, model: str | None = None, encoding_name: str | None = None
 ) -> int:
     """Return the number of tokens in a text string."""
+    # 檢查是否使用 Qwen 模型
+    if model and ("qwen" in model.lower() or "qwen3-vl" in model.lower()):
+        return num_tokens_from_string_qwen(string)
+    
+    # 原有的 OpenAI tokenizer 邏輯
     if model is not None:
         try:
             encoding = tiktoken.encoding_for_model(model)
